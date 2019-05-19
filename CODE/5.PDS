@@ -1,0 +1,1140 @@
+****************************************
+*	PRESET SCAN		*
+****************************************
+	; Scan through data see if enemy there
+	; if so then check if needed on screen
+	; set up enemy if sprite places available
+	; then set enemy type byte to off.
+PRESET_SCAN
+	LDX	#0
+PRESET_LOOP	LDA	ON_OFF,X	; get enemy type
+	BEQ	END_OF	; last one in table
+	BMI	PRUB	; either on screen or killed
+
+	LDA	#2+4	; Level is Monster mode
+	BIT	LEVEL_BYTE	; if so then no check for
+	BNE	NO_BOUNDS	; presets off the visible screen
+	JSR	CHECK_PRESET	; this map pos on/near screen
+	BCS	PRUB	; now were near
+
+NO_BOUNDS	JSR	GET_FREE
+	BCS	END_OF	; no sprites left (just aswell exit)
+
+	; map cords set first so sprite is placed in right place
+	LDA	TMAP_XL,X	; the map position
+	STA	ENEMY_XL,Y	; as enemy now
+	LDA	TMAP_XH,X
+	STA	ENEMY_XH,Y	; x map
+	LDA	TMAP_YL,X
+	STA	ENEMY_YL,Y
+	LDA	TMAP_YH,X
+	STA	ENEMY_YH,Y	; y map
+
+	STY	XTEMP	; save enemy index
+	LDY	ON_OFF,X
+	LDA	ZONE_VEC_LO-1,Y	; setup enemy table
+	STA	!LIVE+1	; go where
+	LDA	ZONE_VEC_HI-1,Y
+	STA	!LIVE+2
+	LDY	XTEMP	; get back enemy index
+!LIVE	JSR	&FFFF	; setup and enemy
+	LDA	ON_OFF,X	; type there
+	STA	ENEMY_TYPE,Y	; set type (enemy control)
+	ORA	#%10000000	; now take out from list
+	STA	ON_OFF,X
+	TXA		; preset index number
+	STA	ENEMY_PRESET,Y	; save when sprite is used
+PRUB	INX		; next in list
+	BNE	PRESET_LOOP	; do all
+END_OF	RTS		; exit.
+
+	; Check preset sprite data if anywhere around screen map
+	; so able to trigger them on 
+	; place is off the map when position is 2nd pixel off
+CHECK_PRESET	LDA	TMAP_XL,X	; check x first
+	SEC
+	SBC	PIXEL_XL	; screen top left
+	STA	MIKE1	; temp answer lo
+	LDA	TMAP_XH,X	; pixel map x hi
+	SBC	PIXEL_XH	; top left pixel screen
+	STA	MIKE1+1	; high byte
+	BEQ	CHECK_PRESETY	; when 0 must be on screen
+	CMP	#<-25	; high byte if -24
+	BNE	OTTH
+	LDA	MIKE1
+	CMP	#>-25	; low byte of -24
+	BCS	CHECK_PRESETY	; on side ok
+SETC3_OFF	SEC		; off screen limits
+	RTS
+
+OTTH	CMP	#<SCREEN_XLENGTH+2	; high byte
+	BNE	SETC3_OFF	; off screen (0 checked already)
+	LDA	MIKE1	; get back low
+	CMP	#>SCREEN_XLENGTH+2	; low byte
+	BCC	CHECK_PRESETY	; on screen
+	RTS
+	; got here must check y cords for valid range
+CHECK_PRESETY	LDA	TMAP_YL,X	; weapon y lo
+	SEC
+	SBC	PIXEL_YL	; screen pixel cord
+	STA	MIKE1	; temp answer lo
+	LDA	TMAP_YH,X	; cord y hi
+	SBC	PIXEL_YH	; screen pixel cord
+	BEQ	ATH_T1A	; high bit zero
+	CMP	#<-21	; high byte if -21
+	BNE	SETC4_OFF
+	LDA	MIKE1
+	CMP	#>-21	; low byte of -21
+	BCS	ONSFLA	; 
+SETC4_OFF	SEC		; off screen limits
+	RTS
+
+ONSFLA	CLC		; on screen
+	RTS
+
+	; here when msb is 0
+ATH_T1A	LDA	MIKE1	; get back y low
+	CMP	#>SCREEN_YLENGTH+1	; low byte
+	RTS		; c=0 < c=1 >
+
+****************************************
+*	SCAN SIDES		*
+****************************************
+	; scan all sides (if needed) when stop
+	; scan side comeing on
+	; TINX=8 XSCROLL=6 scan left
+	; TINX=8 XSCROLL=0 scan right
+	; TINY=0 YSCROLL=2 scan top
+	; TINY=0 YSCROLL=0 scan bottom
+
+ENEMY_SCAN	LDA	#2+4	; monster and battle mode
+	BIT	LEVEL_BYTE
+	BEQ	SCROLNG	; nope must be scroller
+	RTS
+SCROLNG	LDA	TINX	; tinx at 8
+	BEQ	SCAN_Y	; nope at 0 so look at y only
+	LDA	XSCROLL	; xscroll at 0
+	BEQ	RISCAN	; do a scan left
+	CMP	#6	; want a left
+	BNE	SCAN_Y	; nope so scan y only
+LFSCAN	JSR	SCAN_LEFT	; yes scan right side
+	JMP	SCAN_Y	; past right scan
+
+RISCAN	JSR	SCAN_RIGHT	; scan left side
+SCAN_Y	LDA	TINY	; tiny at 0 only
+	BNE	EXIT_BACK1	; is 8 so exit
+	LDA	YSCROLL
+	BEQ	BOSCAN
+	CMP	#2
+	BNE	EXIT_BACK1
+	JMP	SCAN_TOP
+BOSCAN	JMP	SCAN_BOTTOM
+
+****************************************
+*	SCAN DOWN LEFT SIDE OF MAP	*
+****************************************
+SCAN_LEFT	BIT	LEVEL_BYTE	; want to scan left
+	BPL	EXIT_BACK1	; bit 7 0 no scan
+	LDY	YOFFSET	; place down screen now
+	LDX	#8	; amount index
+FIND_ANOTHER1	LDA	XOFFSET
+	BEQ	EXIT_BACK1	; unable to scan
+	SEC
+	SBC	#1
+	CLC
+	ADC	EMAPL,Y	; enemy collision map left side
+	STA	!SMC+1
+	STA	SCAN_MAP	; scaned placed temp save low
+	LDA	EMAPH,Y	; memory
+	ADC	#0
+	STA	!SMC+2
+	STA	SCAN_MAP+1	; scanned places temp save high
+	STX	XTEMP	; save amount index
+!SMC	LDX	&FFFF
+	BMI	DUMMY_B1	; usually 255 dummy entry or enemy ORA 128
+	BEQ	DUMMY_B1	; other than 0 something there
+	JSR	PLACE_ONE
+	BCS	DUMMY_B1
+	JSR	GET_FREE	; find enemy place
+	BCS	EXIT_BACK1	; all used up
+	JSR	WORKY
+	LDA	PIXEL_XL	; top left x position lo
+	CLC	;SEC	; -1 aswell
+	SBC	#24	; sprite length off left side
+	STA	ENEMY_XL,Y	; now is enemy position
+	LDA	PIXEL_XH	; top left x position hi
+	SBC	#0
+	STA	ENEMY_XH,Y	; now is enemy position
+
+	LDA	ZONE_VEC_LO-1,X	; setup enemy table
+	STA	!LIVE+1	; go where
+	LDA	ZONE_VEC_HI-1,X
+	STA	!LIVE+2
+	LDA	#64	; dir setup move right (+ move)
+	STA	ENEMY_XDIR,Y
+	LDA	#0
+	STA	ENEMY_YDIR,Y
+!LIVE	JSR	&FFFF	; setup and enemy
+	LDY	YTEMP
+DUMMY_B1	LDX	XTEMP
+	INY
+	DEX
+	BPL	FIND_ANOTHER1
+EXIT_BACK1	RTS
+
+****************************************
+*	SCAN DOWN RIGHT SIDE OF MAP	*
+****************************************
+SCAN_RIGHT	BIT	LEVEL_BYTE	; want to scan right
+	BVC	EXIT_BACK2	; bit 6 clear no scan
+	LDY	YOFFSET	; place down screen now
+	LDX	#8	; amount index
+FIND_ANOTHER2	LDA	XOFFSET
+	CMP	#255	; dont scan when at right side of screen
+STOP_SCANX	EQU	*-1
+	BCS	EXIT_BACK2	; no scan sorry
+	;CLC
+	ADC	#20	; right side tile offset
+	ADC	EMAPL,Y	; enemy collision map left side
+	STA	!SMC+1
+	STA	SCAN_MAP	; scaned placed temp save low
+	LDA	EMAPH,Y	; memory
+	ADC	#0
+	STA	!SMC+2
+	STA	SCAN_MAP+1	; scanned places temp save high
+	STX	XTEMP
+!SMC	LDX	&FFFF
+	BMI	DUMMY_B2	; usually 255 dummy entry
+	BEQ	DUMMY_B2	; other than 0 something there
+	JSR	PLACE_ONE	; randon 50/50 and count down
+	BCS	DUMMY_B2	; not this time
+	JSR	GET_FREE	; find enemy place Y index
+	BCS	EXIT_BACK2	; all used up
+
+	JSR	WORKY
+	LDA	PIXEL_XL	; left of screen
+	SEC	;CLC	; +1 ie 305
+	ADC	#>SCREEN_XLENGTH	; low byte length of screen right side
+	STA	ENEMY_XL,Y	; position to right side
+	LDA	PIXEL_XH
+	ADC	#<SCREEN_XLENGTH	; high byte of length
+	STA	ENEMY_XH,Y	; to msb aswell
+
+	LDA	ZONE_VEC_LO-1,X	; setup enemy table
+	STA	!LIVE+1	; go where
+	LDA	ZONE_VEC_HI-1,X
+	STA	!LIVE+2
+	LDA	#128	; dir setup move left (- move)
+	STA	ENEMY_XDIR,Y
+	LDA	#0
+	STA	ENEMY_YDIR,Y
+!LIVE	JSR	&FFFF	; setup and enemy
+	LDY	YTEMP
+DUMMY_B2	LDX	XTEMP	; restore back for scan
+	INY
+	DEX
+	BPL	FIND_ANOTHER2
+EXIT_BACK2	RTS
+
+****************************************
+*	SCAN ALONG TOP OF MAP	*
+****************************************
+SCAN_TOP	LDA	#32	; Want to scan top
+	BIT	LEVEL_BYTE	; bit 5 0 no scan
+	BEQ	EXIT_BACK3
+	LDX	#20	; amount index
+	LDA	YOFFSET	; curreny y
+	BEQ	EXIT_BACK3	; no scan when at top
+	SEC
+	SBC	#1	; scan back one tile (-yscroll)
+	TAY		; amount to 1 sprite before screen
+FIND_ANOTHER3	TXA		; count x position
+	CLC
+	ADC	XOFFSET	; add on actual offset
+	ADC	EMAPL,Y	; enemy collision map left side
+	STA	!SMC+1
+	STA	SCAN_MAP	; scaned placed temp save low
+	LDA	EMAPH,Y	; memory
+	ADC	#0
+	STA	!SMC+2
+	STA	SCAN_MAP+1	; scanned places temp save high
+	STX	XTEMP
+!SMC	LDX	&FFFF
+	BMI	DUMMY_B3	; usually 255 dummy entry
+	BEQ	DUMMY_B3	; other than 0 something there
+	JSR	PLACE_ONE	; randon 50/50 and count down
+	BCS	DUMMY_B3	; not this time
+	JSR	GET_FREE	; find enemy place Y index
+	BCS	EXIT_BACK3	; all used up
+	JSR	WORKX	; x pixel position
+	LDA	PIXEL_YL	; top of screen
+	SEC
+	SBC	#21	; sprite hight off top
+	STA	ENEMY_YL,Y	; position to top of map
+	LDA	PIXEL_YH
+	SBC	#0	; high byte of length
+	STA	ENEMY_YH,Y	; to msb aswell
+
+	LDA	ZONE_VEC_LO-1,X	; setup enemy table
+	STA	!LIVE+1	; go where
+	LDA	ZONE_VEC_HI-1,X
+	STA	!LIVE+2
+	LDA	#64	; dir setup move down (+ move)
+	STA	ENEMY_YDIR,Y
+	LDA	#0	; not in x yet
+	STA	ENEMY_XDIR,Y
+!LIVE	JSR	&FFFF	; setup and enemy
+	LDY	YTEMP	; back y pos
+DUMMY_B3	LDX	XTEMP	; restore reg
+	DEX
+	BPL	FIND_ANOTHER3
+EXIT_BACK3	RTS
+
+****************************************
+*	SCAN ALONG BOTTOM OF MAP	*
+****************************************
+SCAN_BOTTOM	LDA	#16	; Want to scan bottom
+	BIT	LEVEL_BYTE	; bit 4 0 no scan
+	BEQ	EXIT_BACK4
+	LDX	#20	; amount index
+	LDA	YOFFSET
+	CMP	#255	; no scan bottom when at bottom
+STOP_SCANY	EQU	*-1
+	BCS	EXIT_BACK4
+	;CLC
+	ADC	#8	; 8 tiles down screen
+	TAY		; now yoffset down map
+FIND_ANOTHER4	TXA		; count x position
+	CLC
+	ADC	XOFFSET	; add on actual offset
+	ADC	EMAPL,Y	; enemy collision map left side
+	STA	!SMC+1
+	STA	SCAN_MAP	; scaned placed temp save low
+	LDA	EMAPH,Y	; memory
+	ADC	#0
+	STA	!SMC+2
+	STA	SCAN_MAP+1	; scanned places temp save high
+	STX	XTEMP
+!SMC	LDX	&FFFF
+	BMI	DUMMY_B4	; usually 255 dummy entry
+	BEQ	DUMMY_B4	; other than 0 something there
+
+	JSR	PLACE_ONE	; randon 50/50 and count down
+	BCS	DUMMY_B4	; not this time
+	JSR	GET_FREE	; find enemy place Y index
+	BCS	EXIT_BACK4	; all used up
+
+	JSR	WORKX	; x pixel position
+	LDA	PIXEL_YL	; top of screen
+	CLC
+	ADC	#>SCREEN_YLENGTH+1	; down to bottom
+	STA	ENEMY_YL,Y	; position to bottom
+	LDA	PIXEL_YH
+	ADC	#<SCREEN_YLENGTH+1	; high byte of length
+	STA	ENEMY_YH,Y	; to msb aswell
+
+	LDA	ZONE_VEC_LO-1,X	; setup enemy table
+	STA	!LIVE+1	; go where
+	LDA	ZONE_VEC_HI-1,X
+	STA	!LIVE+2
+	LDA	#128	; dir setup move up (- move)
+	STA	ENEMY_YDIR,Y
+	LDA	#0	; not in x yet
+	STA	ENEMY_XDIR,Y
+!LIVE	JSR	&FFFF	; setup and enemy
+	LDY	YTEMP	; y scan pos
+DUMMY_B4	LDX	XTEMP	; restore back
+	DEX
+	BPL	FIND_ANOTHER4
+EXIT_BACK4	RTS
+
+****************************************
+*	BITS FOR ENEMY SCANNING	*
+****************************************
+	; get y pixel map position with offset in YTEMP
+	; value=( ( (YTEMP-YOFFSET) *16 ) + YMAP) ) 
+	; now subtract unseen tile data - ( (YMAP AND 15) -1 )
+	; -1 as 1 pixel of tile is allways unseen at start
+	; that is when start YSCROLL=6 ie not quite top (7)
+	; and when set to top map pos is at 0, not 1 as really should be
+WORKY	STX	TEMP
+	LDA	YTEMP	; tile check position
+	SEC
+	SBC	YOFFSET	; put from top of screen c=1
+	TAX
+	LDA	MULT16L,X	; * 16 table low
+	CLC
+	ADC	PIXEL_YL	; top of screen map position
+	STA	ENEMY_YL,Y	; position for enemy
+	LDA	MULT16H,X	; * 16 table high
+	ADC	PIXEL_YH	; top of screen high
+	STA	ENEMY_YH,Y	; top bit for enemy map position
+	LDX	TEMP	; get back x now
+
+	LDA	PIXEL_YL	; map low bit
+	AND	#15	; get offset pixels into tile
+	STA	TEMP
+	LDA	ENEMY_YL,Y
+	CLC		; -1 aswell
+	SBC	TEMP	; take from not seen amount
+	STA	ENEMY_YL,Y
+	LDA	ENEMY_YH,Y
+	SBC	#0
+	STA	ENEMY_YH,Y
+	RTS
+
+	; get x pixel position from XTEMP
+	; XTEMP*16 - (pixel AND 15) -1
+WORKX	STX	TEMP	; save index
+	LDX	XTEMP
+	LDA	MULT16L,X	; * 16 table low C=0
+	ADC	PIXEL_XL	; top of screen map position
+	STA	ENEMY_XL,Y	; position for enemy
+	LDA	MULT16H,X	; * 16 table high
+	ADC	PIXEL_XH	; top of screen high
+	STA	ENEMY_XH,Y	; top bit for enemy map position
+	LDX	TEMP	; restore back index
+
+	LDA	PIXEL_XL	; pixel AND 15
+	AND	#15
+	STA	TEMP
+	LDA	ENEMY_XL,Y	; from map pos
+	CLC		; -1 as well
+	SBC	TEMP
+	STA	ENEMY_XL,Y
+	LDA	ENEMY_XH,Y
+	SBC	#0
+	STA	ENEMY_XH,Y	
+	RTS
+
+	; 16 * table 0 to 19 entrys
+MULT16L	DL	0,16,32,48,64,80,96,112,128,144,160,176,192,208
+	DL	224,240,256,272,288,304
+MULT16H	DH	0,16,32,48,64,80,96,112,128,144,160,176,192,208
+	DH	224,240,256,272,288,304
+
+****************************************
+*	PLACE A ENEMY		*
+****************************************
+PLACE_ONE	STY	YTEMP	; save now
+	LDA	DO_WHAT-1,X	; random or must come on
+	BNE	MUST_COME	; non random so try to place
+	JSR	RANDOM	; get rands
+	CMP	#&80	; 50/50 chance
+	BCS	NOT_WANT	; nop maybe next time
+	DEC	ENEMY_COME	; delay for next enemy
+	BNE	NOT_WANTA	; not yet
+	LDA	COME_TAB-1,X	; start at 1
+	STA	ENEMY_COME	; reset count
+MUST_COME	CLC		; ok plut sprite
+	RTS
+NOT_WANTA	SEC		; no sprite
+NOT_WANT	RTS
+
+****************************************
+*	LOCATE FREE ENEMY SPOT	*	
+****************************************
+GET_FREE	LDY	#EN_START	; amount to check
+	CLC		; if first free c must =0
+FIND_FREE	LDA	ENEMY_TYPE,Y	; in use
+	BEQ	FREE_ONE	; 0 is yes c=0 allways
+	INY		; else try another
+	CPY	#EN_START+MAX_EN
+	BCC	FIND_FREE	; all available C=0 go again
+FREE_ONE	RTS		; C=1 sorry all full today
+
+	; Used by sprites 2x2 in size
+	; Find three other places
+	; Y is one advanced from last get free
+FIND_SECOND	INY		; next one first
+	CPY	#EN_START+MAX_EN	; end of amount
+	BCS	UNABLE	; end of list C=1
+	LDA	ENEMY_TYPE,Y	; in use
+	BNE	FIND_SECOND	; leep looking
+	STY	FREE_INDEX	; first one
+FIND_THIRD	INY
+	CPY	#EN_START+MAX_EN	; end of amount
+	BCS	UNABLE	; end of list C=1
+	LDA	ENEMY_TYPE,Y	; in use
+	BNE	FIND_THIRD	; leep looking
+	STY	FREE_INDEX+1	; second
+FIND_FOURTH	INY
+	CPY	#EN_START+MAX_EN	; end of amount
+	BCS	UNABLE	; end of list C=1
+	LDA	ENEMY_TYPE,Y	; in use
+	BNE	FIND_FOURTH	; leep looking
+	STY	FREE_INDEX+2	; got last
+UNABLE	RTS
+
+FREE_INDEX	DB	0,0,0	; three bytes for index saves
+
+	; What to do for enemy type 1 set allways 0 random
+DO_WHAT	DB	0	; pipe	; 1
+	DB	0	; cloud	; 2
+	DB	0	; snail	; 3
+	DB	1	; turret	; 4
+	DB	1	; turret	; 5
+	DB	1	; pod	; 6
+	DB	0	; bee	; 7
+	DB	1	; jumper	; 8
+	DB	1	; pod appear	; 9
+
+	; delay for next enemy of what type, single count down byte
+COME_TAB	DB	8	; pipe	; 1
+	DB	10	; cloud	; 2
+	DB	15	; snail	; 3
+	DB	0	; turret	; 4
+	DB	0	; turret	; 5
+	DB	0	; pod	; 6
+	DB	10	; bee	; 7
+	DB	0	; jumper	; 8
+	DB	0	; pod appear	; 9
+
+	; look into map for enemys side using enemy params
+	; uses collision tables for offsets down.
+	; X enemy number
+BULLET_SIDE	LDA	#5+1	; as enemy =2 ie 1+1
+	JSR	GET_EMEM1
+	BNE	CAN1
+	LDA	#16-1	; as enemy =21 ie 22-1
+	JMP	GET_EMEM1
+
+ENEMY_SIDE	LDA	#2
+	JSR	GET_EMEM1	; first tile
+	BNE	CAN1
+	LDA	#21
+GET_EMEM1	CLC		; add little offset
+	ADC	ENEMY_YL,X	; and divide down for tile place
+	STA	MIKE1	; temp save
+	LDA	ENEMY_YH,X
+	ADC	#0
+	LSR	A
+	ROR	MIKE1	; / 2
+	LSR	A
+	ROR	MIKE1	; / 4
+	LSR	A
+	ROR	MIKE1	; / 8
+	LSR	A
+	ROR	MIKE1	; / 16
+	LDY	MIKE1	; tile offset = map pos / 16
+
+	LDA	ENEMY_XDIR,X	; faceing
+	BMI	STAND	; look at left
+	LDA	ENEMY_XL,X
+	CLC
+	ADC	#24	; right side of sprite
+	STA	MIKE1+1
+	LDA	ENEMY_XH,X	; high
+	ADC	#0
+	STA	MIKE1
+	LDA	MIKE1+1
+	JMP	DIVDO
+
+STAND	LDA	ENEMY_XH,X	; save off high
+	STA	MIKE1	; to div temp
+	LDA	ENEMY_XL,X	; low map
+
+DIVDO	LSR	MIKE1	; / 2
+	ROR	A
+	LSR	MIKE1	; / 4
+	ROR	A
+	LSR	MIKE1	; / 8
+	ROR	A
+	LSR	MIKE1	; / 16
+	ROR	A
+	CLC
+	ADC	GMAPL,Y	; map memory low
+	STA	!ADDRESS+1
+	LDA	GMAPH,Y	; map memory hi
+	ADC	#0
+	STA	!ADDRESS+2
+!ADDRESS	LDY	&FFFF	; get tile number
+	LDA	TILEMAP,Y	; see what to do for tile
+	BEQ	CAN1
+	CMP	#2
+	BEQ	CAN1
+	CMP	#3
+CAN1	RTS		; z=0 can go through
+
+	; Above bullets position
+BULLET_TOP	LDA	#5	; bullet top
+	NOW
+	; Below bullets position
+BULLET_BOTTOM	LDA	#16	; bottom of bullet
+	NOW
+	; look to exact tile position for under enemy until touch
+ENEMY_FEET	LDA	#21+1
+	NOW
+	; tile above enemy's head
+ENEMY_HEAD	LDA	#1
+	CLC		; add little offset
+	ADC	ENEMY_YL,X	; and divide down for tile place
+	STA	MIKE1	; temp save
+	LDA	ENEMY_YH,X
+	ADC	#0
+	LSR	A
+	ROR	MIKE1	; / 2
+	LSR	A
+	ROR	MIKE1	; / 4
+	LSR	A
+	ROR	MIKE1	; / 8
+	LSR	A
+	ROR	MIKE1	; / 16
+	LDY	MIKE1	; tile offset = map pos / 16
+
+	LDA	ENEMY_XL,X	; and divide down for tile place
+	CLC
+	ADC	#8	; sprite 3*8 pixels so use middle
+	STA	MIKE1
+	LDA	ENEMY_XH,X
+	ADC	#0
+	LSR	A
+	ROR	MIKE1	; / 2
+	LSR	A
+	ROR	MIKE1	; / 4
+	LSR	A
+	ROR	MIKE1	; / 8
+	LSR	A
+	ROR	MIKE1	; /16
+	LDA	MIKE1
+	CLC
+	ADC	GMAPL,Y	; map memory low
+	STA	!ADDRESS+1
+	LDA	GMAPH,Y	; map memory hi
+	ADC	#0
+	STA	!ADDRESS+2
+!ADDRESS	LDY	&FFFF	; get tile number
+	LDA	TILEMAP,Y	; see what to do for tile
+	BEQ	CAN2
+	CMP	#2
+	BEQ	CAN2
+	CMP	#3
+CAN2	RTS		; z=0 can go through
+
+RANDOM	LDA	SEED
+	ASL	A
+	ASL	A
+	CLC
+	ADC	SEED
+	CLC
+	ADC	#21
+	STA	SEED
+	RTS
+
+****************************************
+*	ENEMY CONTROL		*	
+****************************************
+ENEMY_UPDATE	JSR	ROBOS_COLLIDE	; get params for detection
+	LDX	#EN_START	; 9 enemy exists
+UP_LOOP	LDY	ENEMY_TYPE,X	; anything here
+	BEQ	NOT_ATALL
+	LDA	NME_VEC_LOW-1,Y	; jump to it
+	STA	!SMC+1
+	LDA	NME_VEC_HIGH-1,Y
+	STA	!SMC+2	; go to high
+!SMC	JSR	&FFFF
+NOT_ATALL	INX
+	CPX	#EN_START+MAX_EN
+	BCC	UP_LOOP
+	RTS
+
+****************************************
+*	ENEMY CONTROL VECTORS	*	
+****************************************
+NME_VEC_LOW	DL	do_pipe	; 1
+	DL	do_clouds	; 2
+	DL	do_snail	; 3
+	DL	do_turret	; 4
+	DL	do_turret	; 5
+	DL	do_pod	; 6
+	DL	do_bee	; 7
+	DL	do_jumper	; 8
+	DL	do_pod	; 9
+	DL	do_explosion	; 10
+	DL	dummy	; 11
+
+	; Presets
+	DL	do_fly	; 12
+	DL	do_gem	; 13
+
+	; Monster 1
+	DL	do_m1arm	; 14
+	DL	do_m1gunt	; 15
+	DL	do_m1nose	; 16
+
+	; Monster 2
+	DL	do_m2nose	; 17
+	DL	do_m2funnies	; 18
+	DL	do_m2gunt	; 19 
+
+	; Monster 3
+	DL	do_m3leg	; 20
+	DL	do_m3foot	; 21
+	DL	do_m3gunt	; 22
+	DL	do_m3nose	; 23
+
+	; Monster 4
+	DL	do_m4gunt	; 24
+	DL	do_m4nose	; 25
+
+	; Monster 5
+	DL	do_m5gunt	; 26
+	DL	do_m5front	; 27
+	DL	do_m5middle	; 28
+	DL	do_m5last	; 29
+
+	; Battle mode
+	DL	do_benemy	; 30
+	DL	do_bcloud	; 31
+	DL	do_befl	; 32
+
+NME_VEC_HIGH	DH	do_pipe	; 1
+	DH	do_clouds	; 2
+	DH	do_snail	; 3
+	DH	do_turret	; 4
+	DH	do_turret	; 5
+	DH	do_pod	; 6
+	DH	do_bee	; 7
+	DH	do_jumper	; 8
+	DH	do_pod	; 9
+	DH	do_explosion	; 10
+	DH	dummy	; 11
+
+	; Presets
+	DH	do_fly	; 12
+	DH	do_gem	; 13
+
+	; Monster 1
+	DH	do_m1arm	; 14
+	DH	do_m1gunt	; 15
+	DH	do_m1nose	; 16
+
+	; Monster 2
+	DH	do_m2nose	; 17
+	DH	do_m2funnies	; 18
+	DH	do_m2gunt	; 19
+
+	; Monster 3
+	DH	do_m3leg	; 20
+	DH	do_m3foot	; 21
+	DH	do_m3gunt	; 22
+	DH	do_m3nose	; 23
+
+	; Monster 4
+	DH	do_m4gunt	; 24
+	DH	do_m4nose	; 25
+
+	; Monster 5
+	DH	do_m5gunt	; 26
+	DH	do_m5front	; 27
+	DH	do_m5middle	; 28
+	DH	do_m5last	; 29
+
+	; Battle mode
+	DH	do_benemy	; 30
+	DH	do_bcloud	; 31
+	DH	do_befl	; 32
+
+****************************************
+*	ENEMY SETUP VECTORS	*	
+****************************************
+EXPLODE_SEQ	EQU	10
+DUMMY_SEQ	EQU	11	; another bit of large sized enemy
+GEM_SEQ	EQU	13
+
+ZONE_VEC_LO	DL	set_pipe	; 1
+	DL	set_cloud	; 2
+	DL	set_snail	; 3
+	DL	set_turret	; 4 bottom
+	DL	set_turret	; 5 top
+	DL	set_pod	; 6
+	DL	set_bee	; 7
+	DL	set_jumper	; 8
+	DL	set_pod	; 9 Appearing pod
+	DL	dummy	; 10 explosion
+	DL	dummy	; 11 dummy for 4 spriter
+
+	; Presets
+	DL	set_fly	; 12
+	DL	set_gem	; 13 (also set from fly)
+
+	; Monster 1
+	DL	set_m1arm	; 14 both arms
+	DL	set_m1gunt	; 15 gun turrets
+	DL	set_m1nose	; 16 cover over front
+
+	; Monster 2
+	DL	set_m2nose	; 17 small part of front
+	DL	set_m2funnies	; 18 3 tiny wiggly bits
+	DL	set_m2gunt	; 19 gun blob
+
+	; Monster 3
+	DL	set_m3leg	; 20 small leg segments
+	DL	set_m3foot	; 21 attached bit as foot
+	DL	set_m3gunt	; 22 gun turrets
+	DL	set_m3nose	; 23 front nose
+
+	; Monster 4
+	DL	set_m4gunt	; 24 gun turrets
+	DL	set_m4nose	; 25 small part of front
+
+	; Monster 5
+	DL	set_m5gunt	; 26 turrets
+	DL	set_m5front	; 27 4 sprite front section
+	DL	dummy	; 28 
+	DL	dummy	; 29
+
+	; Battle mode
+	DL	set_benemy	; 30 battle enemy
+	DL	set_bcloud	; 31 battle cloud
+	DL	set_befl	; 32 battle enemy flames
+
+ZONE_VEC_HI	DH	set_pipe	; 1
+	DH	set_cloud	; 2
+	DH	set_snail	; 3
+	DH	set_turret	; 4
+	DH	set_turret	; 5
+	DH	set_pod	; 6
+	DH	set_bee	; 7
+	DH	set_jumper	; 8
+	DH	set_pod	; 9
+	DH	dummy	; 10
+	DH	dummy	; 11
+
+	; Presets
+	DH	set_fly	; 12
+	DH	set_gem	; 13
+
+	; Monster 1
+	DH	set_m1arm	; 14
+	DH	set_m1gunt	; 15
+	DH	set_m1nose	; 16
+
+	; Monster 2
+	DH	set_m2nose	; 17
+	DH	set_m2funnies	; 18
+	DH	set_m2gunt	; 19
+
+	; Monster 3
+	DH	set_m3leg	; 20
+	DH	set_m3foot	; 21
+	DH	set_m3gunt	; 22
+	DH	set_m3nose	; 23
+
+	; Monster 4
+	DH	set_m4gunt	; 24
+	DH	set_m4nose	; 25
+
+	; Monster 5
+	DH	set_m5gunt	; 26
+	DH	set_m5front	; 27
+	DH	dummy	; 28 
+	DH	dummy	; 29
+
+	; Battle mode
+	DH	set_benemy	; 30
+	DH	set_bcloud	; 31
+	DH	set_befl	; 32
+
+
+	; get distance in x from enemy and robo
+	; save to mike1 and mike1+1 low high
+	; X enemy index
+DISTANCEX	LDA	ROBO_XL
+	SEC
+	SBC	ENEMY_XL,X
+	STA	MIKE1
+	LDA	ROBO_XH
+	SBC	ENEMY_XH,X
+	BCC	TAKE2	; error overflow enemy bigger
+	STA	MIKE1+1
+	LDA	#64	; xdir for enemy +
+	RTS
+
+	; get x dist when enemy is the larger
+TAKE2	LDA	ENEMY_XL,X
+	SEC
+	SBC	ROBO_XL
+	STA	MIKE1
+	LDA	ENEMY_XH,X
+	SBC	ROBO_XH
+	STA	MIKE1+1
+	LDA	#128	; xdir for move -
+	RTS
+
+	; get distance in y from enemy and robo
+	; save to mike2 and mike2+1 low high
+	; X enemy index
+DISTANCEY	LDA	ROBO_YL	; robo low
+	SEC
+	SBC	ENEMY_YL,X	; enemy low
+	STA	MIKE2
+	LDA	ROBO_YH	; robo high
+	SBC	ENEMY_YH,X	; enemy high
+	BCC	TAKE4	; enemy the larger
+	STA	MIKE2+1
+	LDA	#64	; y dir move +
+	RTS
+
+	; get y distance when enemy is the larger
+TAKE4	LDA	ENEMY_YL,X	; enemy low
+	SEC
+	SBC	ROBO_YL	; robo low
+	STA	MIKE2
+	LDA	ENEMY_YH,X	; enemy high
+	SBC	ROBO_YH	; robo high
+	STA	MIKE2+1
+	LDA	#128	; y dir move -
+	RTS
+
+****************************************
+*	EXPLOSION		*
+****************************************
+do_explosion	DEC	ENEMY_SPEED,X
+	BNE	dummy
+	LDA	#2
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	LDA	#BROWN
+	STA	ENEMY_COL,X
+	TYA
+	CLC
+	ADC	#EXPLODE_SPR	; explosion frame
+	STA	ENEMY_SPR,X
+	INY
+	TYA
+	STA	ENEMY_FRAME,X
+	CPY	#8
+	BCC	dummy
+	LDA	ENEMY_NEXTTYPE,X	; now do what
+	STA	ENEMY_TYPE,X	; mostly 0 kill off
+dummy	RTS
+
+****************************************
+*	PIPES			*
+****************************************
+PIPE_BYTE	DB	0	; only one at time please
+	; Pipe 2 x 2 sprites (so have to find 3 othere free)
+set_pipe	LDA	PIPE_BYTE
+	BNE	dummy	; One pipe on screen at once (ever)
+
+	TYA		; index for first sprite
+	TAX		; use x as index
+	JSR	FIND_SECOND	; get 3 free places
+	BCS	dummy	; can not display it
+
+	; got here then have 4 free sprite to use
+	; now must work out where other sprites are to go
+	LDA	FREE_INDEX
+	STA	ENEMY_PRESET,X
+	LDA	FREE_INDEX+1
+	STA	ENEMY_FRAME,X
+	LDA	FREE_INDEX+2
+	STA	ENEMY_ACT,X
+	LDA	#GREEN
+	JSR	SET_PIPECOL	; set pipe colours
+
+	LDA	#20	; hits to kill
+	STA	ENEMY_DAMAGE,X
+	LDA	#100
+	STA	ENEMY_SPEED,X	; fire bullet at player
+	LDA	#0
+	STA	ENEMY_NOHIT,X	; able to shoot at
+
+	LDA	ENEMY_XDIR,X	; dir passed from scan
+	BMI	FROM_RIGHT	; map pos is at left side of screen
+
+	LDA	ENEMY_XL,X	; side pos
+	SEC
+	SBC	#24
+	STA	ENEMY_XL,X
+	LDA	ENEMY_XH,X
+	SBC	#0
+	STA	ENEMY_XH,X
+	
+FROM_RIGHT	LDA	ENEMY_XL,X	; side pos
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_XL,Y
+	CLC
+	ADC	#24	; add x sprite length
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_XL,Y
+	LDY	ENEMY_PRESET,X
+	STA	ENEMY_XL,Y
+
+	LDA	ENEMY_XH,X	; side pos
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_XH,Y
+	ADC	#0	; add sprite length
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_XH,Y
+	LDY	ENEMY_PRESET,X
+	STA	ENEMY_XH,Y
+
+	LDA	ENEMY_YL,X	; side pos
+	STA	ENEMY_YL,Y	; last Y is preset
+	CLC
+	ADC	#21	; add y sprite length
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_YL,Y
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_YL,Y
+
+	LDA	ENEMY_YH,X	; side pos
+	LDY	ENEMY_PRESET,X
+	STA	ENEMY_YH,Y	; last Y is frame
+	ADC	#0	; add sprite length
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_YH,Y
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_YH,Y
+	; now have all map cords for sprites
+	LDA	#PIPE_SPR+0
+	STA	ENEMY_SPR,X
+	LDA	#PIPE_SPR+3
+	STA	ENEMY_SPR,Y	; last was act
+	LDY	ENEMY_PRESET,X
+	LDA	#PIPE_SPR+1
+	STA	ENEMY_SPR,Y
+	LDY	ENEMY_FRAME,X
+	LDA	#PIPE_SPR+2
+	STA	ENEMY_SPR,Y
+
+	LDA	#1	; pipe
+	STA	PIPE_BYTE	; tell control one is here already
+	STA	ENEMY_TYPE,X
+	LDA	#DUMMY_SEQ
+	STA	ENEMY_TYPE,Y	; last was frame
+	LDY	ENEMY_PRESET,X
+	STA	ENEMY_TYPE,Y
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_TYPE,Y
+	RTS
+
+SET_PIPECOL	STA	ENEMY_COL,X
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_COL,Y
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_COL,Y
+	LDY	ENEMY_PRESET,X
+	STA	ENEMY_COL,Y
+	RTS
+
+do_pipe	JSR	CHECK_SPRITE	; on screen bounds ?
+	BCC	SOMEON	; this sprite is on screen
+	TXA
+	TAY		; temp save in y
+	LDX	ENEMY_PRESET,Y	; other bit
+	JSR	CHECK_SPRITE
+	BCC	THIS_ON
+	LDX	ENEMY_FRAME,Y	; another bit
+	JSR	CHECK_SPRITE
+	BCC	THIS_ON
+	LDX	ENEMY_ACT,Y	; last bit
+	JSR	CHECK_SPRITE
+	BCC	THIS_ON	;FREE_ALL	; all off screen
+	; kill all sprite attached to pipes
+	TYA
+	TAX
+	LDA	#0
+	STA	PIPE_BYTE		; available
+	STA	ENEMY_TYPE,X	; x is last index ie ACT
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_TYPE,Y
+	LDY	ENEMY_PRESET,X	; kill other 2 aswell
+	STA	ENEMY_TYPE,Y
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_TYPE,Y
+	RTS
+
+THIS_ON	TYA		; restore back index
+	TAX
+SOMEON	LDA	ENEMY_NOHIT,X
+	BEQ	!ZEROED
+	DEC	ENEMY_NOHIT,X	; else count down it
+	
+	LDA	ENEMY_COL,Y	; flash colours
+	EOR	#GREEN ~ YELLOW
+	NOW
+!ZEROED	LDA	#GREEN
+	JSR	SET_PIPECOL
+	; flash colours as just been hit ;ok
+
+	LDA	ENEMY_DAMAGE,X
+	BEQ	KILL_PI
+	DEC	ENEMY_SPEED,X
+	BNE	MUSHROOM
+	LDA	#100	; delay for another bullet
+	STA	ENEMY_SPEED,X
+	JMP	BULLET2_SETUP	; fire at player
+
+KILL_PI	LDA	#0
+	LDY	#5	; 500 points
+	JSR	SCOREADD
+	LDA	#&18	; sfx
+	STA	FXCHAN3	; 2
+
+	LDA	#EXPLODE_SEQ	; test explosion
+	STA	ENEMY_TYPE,X
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_TYPE,Y
+	LDY	ENEMY_PRESET,X	; kill others aswell
+	STA	ENEMY_TYPE,Y
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_TYPE,Y
+	LDA	#1	; right away
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_SPEED,Y
+	LDY	ENEMY_PRESET,X	; kill other 2 aswell
+	STA	ENEMY_SPEED,Y
+	LDY	ENEMY_FRAME,X
+	STA	ENEMY_SPEED,Y
+
+	LDA	#0
+	STA	PIPE_BYTE		; free
+	LDY	ENEMY_FRAME,X	; get index before destroyed
+	STA	ENEMY_FRAME,X 
+	STA	ENEMY_FRAME,Y
+	STA	ENEMY_NEXTTYPE,X	; all die after killed
+	STA	ENEMY_NEXTTYPE,Y
+	LDY	ENEMY_ACT,X
+	STA	ENEMY_FRAME,Y
+	STA	ENEMY_NEXTTYPE,Y
+	LDY	ENEMY_PRESET,X
+	STA	ENEMY_FRAME,Y
+	STA	ENEMY_NEXTTYPE,Y
+MUSHROOM	RTS
+
+TOUCH_ROBO	JSR	ENEMY_HIT_ROBO
+	BCC	!MISSED
+	LDA	#DELAY_ACT	; robo already delay
+	CMP	ACTION	; then dont do again
+	BEQ	!MISSED
+	STA	ACTION
+	LDA	#4
+	STA	SLOWDOWN	; frames to next move
+	LDA	#&18	; sfx
+	STA	FXCHAN2
+!MISSED	RTS
+****************************************
+*	CLOUD			*
+****************************************
+	; Y enemy index X as type
+set_cloud	LDA	#0
+	STA	ENEMY_ACT,Y	; moving about
+	STA	ENEMY_NOHIT,Y	; able to kill
+	LDA	#CLOUD_SPR
+	STA	ENEMY_SPR,Y
+	LDA	#4	; frame speed factor
+	STA	ENEMY_SPEED,Y
+	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#40	; movements until new one
+	STA	ENEMY_TIMES,Y
+	LDA	#1	; on hit to kill it off
+	STA	ENEMY_DAMAGE,Y
+	TXA		; no STX ABS,Y
+	STA	ENEMY_TYPE,Y	; store last so show not two quick
+	RTS
+

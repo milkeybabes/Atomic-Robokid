@@ -1,0 +1,1379 @@
+do_clouds	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	ALIVE1
+	LDA	#0
+	LDY	#1	; 100 points
+	JSR	SCOREADD
+KILL_ENEMY	LDA	#0	; usually zeros
+EXPLODE_ENEMY	STA	ENEMY_NEXTTYPE,X	; what is next
+	LDA	#&18	; sfx
+	STA	FXCHAN3	; 2
+	LDA	#EXPLODE_SEQ	; explosion
+	STA	ENEMY_TYPE,X
+	LDA	#0
+	STA	ENEMY_FRAME,X
+	LDA	#1	; right away
+	STA	ENEMY_SPEED,X
+	RTS
+
+ALIVE1	DEC	ENEMY_SPEED,X
+	BNE	!JUST_MOVE
+	LDA	#4
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_FRAME,X
+	CLC
+	ADC	#CLOUD_SPR
+	STA	ENEMY_SPR,X	; enemy sprites
+!JUST_MOVE
+	JSR	TOUCH_ROBO	; hit touched robo
+
+	LDA	ENEMY_ACT,X
+	BEQ	MOVNG
+	DEC	ENEMY_TIMES,X	; countdown for wait
+	BNE	HOLDS
+  	
+	JSR	DISTANCEX	; distance between cloud and robo
+	STA	ENEMY_XDIR,X	; new direction
+	LDA	MIKE1+1	; high byte
+	BNE	TOBIG	; high set distance is far to big
+	LDA	MIKE1	; look at distance
+	CMP	#304/4	; quarter of screen distance
+	BCS	TOBIG	; move only in x
+	JSR	DISTANCEY	; get y move direction
+	NOW
+TOBIG	LDA	#0	; no y dir
+	STA	ENEMY_YDIR,X	; now move in y towards robo
+	LDA	#60	; load of time
+	STA	ENEMY_TIMES,X
+	LDA	#0	; back to move
+	STA	ENEMY_ACT,X
+HOLDS	RTS
+	
+MOVNG	DEC	ENEMY_TIMES,X
+	BNE	MOVEME	; more update
+	LDA	#20	; now hold there
+	STA	ENEMY_TIMES,X
+	LDA	#1	; delay it
+	STA	ENEMY_ACT,X
+	RTS
+
+	; move cloud in x direction
+	; ENEMY_XDIR
+	; 128 move left(- map pos)
+	; 64 move right(+ map pos)
+
+MOVEME	LDA	ENEMY_XDIR,X
+	ASL	A
+	BCC	RIMMER
+	JSR	ENEMY_SIDE	; moveing left
+	BEQ	MONV
+	LDA	#64	; move other way
+	STA	ENEMY_XDIR,X
+	JMP	CARO	; no x move until next frame
+MONV	LDA	#-2
+	JMP	MOVIT
+RIMMER	JSR	ENEMY_SIDE
+	BEQ	MONS
+	LDA	#128	; move other way
+	STA	ENEMY_XDIR,X
+	JMP	CARO	; skip move until next frame
+MONS	LDA	#2	; move right into map
+MOVIT	JSR	MOVE_SPRITEX	; slowly move
+
+	; move cloud in y direction
+	; ENEMY_YDIR
+	; 128 move up(- map pos)
+	; 64 move down(+ map pos)
+CARO	LDA	ENEMY_YDIR,X
+	ASL	A
+	BCS	LISTER	; move up
+	ASL	A
+	BCC	NOYM	; no move
+	JSR	ENEMY_FEET	; look above head if move up
+	BEQ	WACK90	; ok to move
+CLEAR_MOVE	LDA	#0
+	STA	ENEMY_YDIR,X	; no more y move atall
+	JMP	NOYM	; move skip
+WACK90	LDA	#1	; move up in map
+	JMP	NOYA
+LISTER	JSR	ENEMY_HEAD	; look below sprite
+	BNE	CLEAR_MOVE	; no moves
+	LDA	#-1	; otherwise move sprite
+NOYA	JSR	MOVE_SPRITEY
+
+NOYM	JSR	CHECK_SPRITE	; check window 1 pixel around
+	BCC	VIDEO	; on screen still
+	LDA	#0
+	STA	ENEMY_TYPE,X	; free sprite position
+VIDEO	RTS
+
+****************************************
+*	SNAIL			*
+****************************************
+set_snail	LDA	ENEMY_XDIR,Y	; get back init direction
+	BMI	!FACL
+	LDA	#SNAIL_RIGHT	; for x position
+	NOW
+!FACL	LDA	#SNAIL_LEFT
+	STA	ENEMY_SPR,Y
+	LDA	#0
+	STA	ENEMY_ACT,Y	; moving about
+	STA	ENEMY_NOHIT,Y	; able to kill
+	LDA	#4	; frame speed factor
+	STA	ENEMY_SPEED,Y
+	LDA	#LT_BLUE
+	STA	ENEMY_COL,Y
+	LDA	#40	; movements until new one
+	STA	ENEMY_TIMES,Y
+	LDA	#1	; on hit to kill it off
+	STA	ENEMY_DAMAGE,Y
+	TXA		; no STX ABS,Y
+	STA	ENEMY_TYPE,Y	; store last so show not two quick
+	RTS
+
+do_snail	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#2
+	JSR	SCOREADD
+	JMP	KILL_ENEMY	; explode snail
+
+!ALIVE	DEC	ENEMY_SPEED,X
+	BNE	JUST_MOVE1
+	LDA	#4
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_FRAME,X
+	LDA	ENEMY_XDIR,X	; faceing
+	BMI	NIEL	; left
+	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#SNAIL_RIGHT	; else right
+	JMP	SPR_SET1
+NIEL	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#SNAIL_LEFT
+SPR_SET1	STA	ENEMY_SPR,X	; enemy sprites
+JUST_MOVE1	JSR	TOUCH_ROBO
+	LDA	ENEMY_ACT,X
+	BEQ	MOVNG1
+	DEC	ENEMY_TIMES,X	; countdown for wait
+	BNE	HOLDS1
+
+	JSR	BULLET1_SETUP
+
+  	JSR	DISTANCEX	; distance between cloud and robo
+	STA	ENEMY_XDIR,X	; new direction
+	LDA	MIKE1+1	; high byte
+	BNE	!TOBIG	; high set distance is far to big
+	LDA	MIKE1	; look at distance
+	CMP	#304/4	; quarter of screen distance
+	BCS	!TOBIG	; move only in x
+	JSR	DISTANCEY
+	NOW
+!TOBIG	LDA	#0	; no y dir
+	STA	ENEMY_YDIR,X; now move in y towards robo
+	LDA	#40	; load of time
+	STA	ENEMY_TIMES,X
+	LDA	#0	; back to move
+	STA	ENEMY_ACT,X
+HOLDS1	RTS
+	
+MOVNG1	JSR	TOUCH_ROBO
+	JSR	DISTANCEX
+	CMP	ENEMY_XDIR,X	; if same leave
+	BNE	PASTROBO
+	DEC	ENEMY_TIMES,X
+	BNE	MOVEME1	; more update
+PASTROBO	LDA	#40	; now hold there
+	STA	ENEMY_TIMES,X
+	LDA	#1	; delay it
+	STA	ENEMY_ACT,X
+	RTS
+
+	; move snail in x direction
+	; ENEMY_XDIR
+	; 128 move left(- map pos)
+	; 64 move right(+ map pos)
+MOVEME1	LDA	ENEMY_XDIR,X
+	ASL	A
+	BCC	RIMMER1
+	JSR	ENEMY_SIDE	; moveing left
+	BEQ	MONV1
+	LDA	#64	; move other way
+	STA	ENEMY_XDIR,X
+	JMP	CARO1	; no x move until next frame
+MONV1	LDA	#-2
+	JMP	MOVIT1
+RIMMER1	JSR	ENEMY_SIDE
+	BEQ	MONS1
+	LDA	#128	; move other way
+	STA	ENEMY_XDIR,X
+	JMP	CARO1	; skip move until next frame
+MONS1	LDA	#2	; move right into map
+MOVIT1	JSR	MOVE_SPRITEX	; slowly move
+
+	; move cloud in y direction
+	; ENEMY_YDIR
+	; 128 move up(- map pos)
+	; 64 move down(+ map pos)
+CARO1	LDA	ENEMY_YDIR,X
+	ASL	A
+	BCS	LISTER1	; move up
+	ASL	A
+	BCC	NOYM1	; no move
+	JSR	ENEMY_FEET	; look above head if move up
+	BEQ	WACK901	; ok to move
+CLEAR_MOVE1	LDA	#0
+	STA	ENEMY_YDIR,X	; no more y move atall
+	JMP	NOYM1	; move skip
+WACK901	LDA	#1	; move up in map
+	JMP	NOYA1
+LISTER1	JSR	ENEMY_HEAD	; look below sprite
+	BNE	CLEAR_MOVE1	; no moves
+	LDA	#-1	; otherwise move sprite
+NOYA1	JSR	MOVE_SPRITEY
+
+NOYM1	JSR	CHECK_SPRITE	; check window 1 pixel around
+	BCC	VIDEO1	; on screen still
+	LDA	#0
+	STA	ENEMY_TYPE,X	; free sprite position
+VIDEO1	RTS
+
+****************************************
+*	TURRETS		*
+****************************************
+set_turret	CPX	#5	; top or bottom
+	BEQ	TOP_TUR
+	LDA	#TURRET_BOT
+	NOW
+TOP_TUR	LDA	#TURRET_TOP
+	STA	ENEMY_ACT,Y	; copy of sprite type
+	STA	ENEMY_SPR,Y	; as know what is what
+	
+	LDA	#LT_RED
+	STA	ENEMY_COL,Y
+	LDA	#1	; one shot to kill
+	STA	ENEMY_DAMAGE,Y
+	LDA	#50
+	STA	ENEMY_COUNT,Y	; fire bullet quickly
+	LDA	#0	; alble to kill
+	STA	ENEMY_NOHIT,Y
+	TXA
+	STA	ENEMY_TYPE,Y	; now enemy type
+
+DELETE_MAP	LDA	SCAN_MAP	; save map memory
+	STA	ENEMY_MAPL,Y	; so can reinit
+	LDA	SCAN_MAP+1	; when killed
+	STA	ENEMY_MAPH,Y
+	LDY	#0
+	LDA	(SCAN_MAP),Y
+	ORA	#128	; so cannot set again
+	STA	(SCAN_MAP),Y	; in same place
+	RTS
+
+RESTORE_MAP	LDA	ENEMY_MAPL,X	; no get map memory
+	STA	SCAN_MAP	; for turret
+	LDA	ENEMY_MAPH,X	; and  restore
+	STA	SCAN_MAP+1	; it, so able
+	LDY	#0	; to come on again
+	LDA	(SCAN_MAP),Y	; when it is shot
+	AND	#%01111111	; mask ignore
+	STA	(SCAN_MAP),Y	; save back
+	TYA
+	STA	ENEMY_MAPL,X	; restored dont do again
+	STA	ENEMY_MAPH,X	; last enemy map scaned memory
+	RTS		; wipe out
+
+do_turret	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	!ALIVE
+	JSR	RESTORE_MAP	; back data
+	TYA		; 0
+	INY		; 1
+	;LDA	#0
+	;LDY	#1	; 100
+	JSR	SCOREADD
+	JMP	KILL_ENEMY	; explode
+
+!ALIVE	JSR	CHECK_SPRITE
+	BCC	FLIMGO	; on the screen
+	LDA	#0	; kill when go off
+	STA	ENEMY_TYPE,X
+	JMP	RESTORE_MAP	; put back in map
+
+FLIMGO	DEC	ENEMY_COUNT,X	; fire bullet count down
+	BNE	TDK
+	LDA	#75		; next bullet
+	STA	ENEMY_COUNT,X	; very quickly
+	JSR	BULLET3_SETUP	; try to do a bullet at robo
+
+TDK	JSR	DISTANCEX
+	STA	TEMP	; save position
+	LDA	MIKE1+1	; distance high
+	BNE	FAR	; massive for use direction
+	LDA	MIKE1
+	CMP	#40	; faily near to player
+	BCC	NEAR_ME	; close to robo
+FAR	BIT	TEMP
+	BMI	LEFT_FAC
+	LDA	#2	; faceing right
+	NOW
+NEAR_ME	LDA	#1	; middle position
+	NOW
+LEFT_FAC	LDA	#0	; first direction faceing left
+	CLC
+	ADC	ENEMY_ACT,X
+	STA	ENEMY_SPR,X
+	RTS
+
+set_pod	CPX	#9
+	BNE	NORPOD
+	LDA	#1	; wait for robo near you
+	STA	ENEMY_ACT,Y
+	STA	ENEMY_NOHIT,Y	; can not hit yet
+	LDA	#BL	; blank to start with
+	STA	ENEMY_SPR,Y
+	LDA	#LT_BLUE
+	JMP	COS
+
+NORPOD	LDA	#POD1_SPR
+	STA	ENEMY_SPR,Y
+	LDA	#0	; able to hit now
+	STA	ENEMY_ACT,Y	; pod there
+	STA	ENEMY_NOHIT,Y
+	LDA	#GREEN
+COS	STA	ENEMY_COL,Y
+	STA	ENEMY_TIMES,Y	; colour save
+	LDA	#10
+	STA	ENEMY_DAMAGE,Y	; lots to kill
+	TXA
+	STA	ENEMY_TYPE,Y
+	LDA	#1	; fire a bullet at player
+	STA	ENEMY_COUNT,Y	; quickly
+	JMP	DELETE_MAP	; only once on screen
+
+do_pod	LDA	ENEMY_ACT,X
+	BEQ	ON_MAP
+	CMP	#1	; wait for near pod
+	BNE	ZOOMUP	; no must be bring up
+
+	JSR	DISTANCEX
+	JSR	DISTANCEY
+	LDA	MIKE1+1	; far away
+	BNE	FORGET	
+	LDA	MIKE1	; only in x distance
+	CMP	#60
+	BCS	FORGET
+	LDA	MIKE2
+	CMP	#60
+	BCS	FORGET
+	LDA	#2	; zoom up
+	STA	ENEMY_ACT,X
+	LDA	#0
+	STA	ENEMY_NOHIT,X	; can kill
+	LDA	#1
+	STA	ENEMY_SPEED,X
+	LDA	#255	; next is 0
+	STA	ENEMY_FRAME,X
+FORGET	RTS
+
+ZOOMUP	DEC	ENEMY_SPEED,X	; speed for bring up
+	BNE	FORGET
+	LDA	#6	; reset speed
+	STA	ENEMY_SPEED,X
+	LDA	ENEMY_FRAME,X	; frame advance
+	CLC
+	ADC	#1
+	CMP	#4
+	BCS	ONNOW
+	STA	ENEMY_FRAME,X	; must save current
+	ADC	#POD2_SPR	; as sprite
+	STA	ENEMY_SPR,X
+	RTS
+
+ONNOW	LDA	#0	; now fire at robo
+	STA	ENEMY_ACT,X
+	JMP	WOPPEE
+
+ON_MAP	LDA	ENEMY_NOHIT,X
+	BEQ	!ZEROED
+	DEC	ENEMY_NOHIT,X	; else count down it
+	LDA	ENEMY_COL,X
+	EOR	#7	; swap col
+	JMP	DYSAN
+!ZEROED	LDA	ENEMY_TIMES,X	; copy of colour for pod
+DYSAN	STA	ENEMY_COL,X
+	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#5	; 500 points
+	JSR	SCOREADD
+	JSR	RESTORE_MAP
+	JMP	KILL_ENEMY
+!ALIVE	JSR	CHECK_SPRITE	; on screen map
+	BCC	WOPPEE	; still here
+	LDA	#0	; take out from list
+	STA	ENEMY_TYPE,X
+	JMP	RESTORE_MAP	; put back to map
+
+WOPPEE	; now can check to fire bullet at player
+	; from one of 4 positions around pods map cords
+	DEC	ENEMY_COUNT,X	; able to fire
+	BNE	WAS_OUT	; not
+	LDA	#40
+	STA	ENEMY_COUNT,X	; next one with delay
+	JSR	DISTANCEX
+	STA	ENEMY_XDIR,X	; only as save
+	JSR	DISTANCEY
+	STA	ENEMY_YDIR,X	; as save
+	BMI	ROBO_AB	; robo top of screen
+	LDA	MIKE2	; Y distance
+	CMP	#13	; to great
+	BCS	FIREUP	; try other way ?
+KILL_ROO	JMP	BULLET4_SETUP
+ROBO_AB	LDA	MIKE2	; Y distance
+	CMP	#12	; near when below enemy
+	BCC	KILL_ROO
+	; fire up or down
+FIREUP	LDA	MIKE1+1	; high byte of distance
+	BNE	WAS_OUT	; far too great
+	LDA	ENEMY_XDIR,X
+	BMI	ROBO_CD
+	LDA	MIKE1	; small distance in x
+	CMP	#14	; right side of enemy
+	BCS	WAS_OUT
+KILL_BOO	JMP	BULLET5_SETUP	; fire up or down
+ROBO_CD	LDA	MIKE1
+	CMP	#16	; left side of enemy
+	BCC	KILL_BOO
+WAS_OUT	RTS
+
+****************************************
+*	HUMBLE BUMBLE		*
+****************************************
+set_bee	LDA	ENEMY_XDIR,Y	; get back init direction
+	BMI	!FACL
+	LDA	#BEE_RIGHT	; for x position
+	NOW
+!FACL	LDA	#BEE_LEFT
+	STA	ENEMY_SPR,Y
+	LDA	#0
+	STA	ENEMY_ACT,Y	; moving about
+	STA	ENEMY_NOHIT,Y	; able to kill
+	STA	ENEMY_COUNT,Y
+	LDA	#4	; frame speed factor
+	STA	ENEMY_SPEED,Y
+	LDA	#LT_RED
+	STA	ENEMY_COL,Y
+	LDA	#40	; movements until new one
+	STA	ENEMY_TIMES,Y
+	LDA	#1	; on hit to kill it off
+	STA	ENEMY_DAMAGE,Y
+	TXA		; no STX ABS,Y
+	STA	ENEMY_TYPE,Y	; store last so show not two quick
+	RTS
+
+do_bee	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#2
+	JSR	SCOREADD
+	JMP	KILL_ENEMY	; explode bee
+
+!ALIVE	DEC	ENEMY_SPEED,X
+	BNE	JUST_MOVE2
+	LDA	#4
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_FRAME,X
+	LDA	ENEMY_XDIR,X	; faceing
+	BMI	NIEL1	; left
+	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#BEE_RIGHT	; else right
+	JMP	SPR_SET2
+NIEL1	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#BEE_LEFT
+SPR_SET2	STA	ENEMY_SPR,X	; enemy sprites
+
+JUST_MOVE2	JSR	TOUCH_ROBO
+	JSR	CHECK_SPRITE	; check window 1 pixel around
+	BCC	VIDEO2	; off screen
+	LDA	#0
+	STA	ENEMY_TYPE,X	; free sprite position
+	RTS
+
+VIDEO2	LDA	ENEMY_ACT,X
+	BEQ	MOVNG2
+	DEC	ENEMY_TIMES,X	; countdown for wait
+	BNE	HOLDS2
+	JSR	BULLET1_SETUP	; bullet as snails
+	LDA	#0
+	STA	ENEMY_ACT,X	; back to move
+HOLDS2	JSR	DISTANCEX	; distance between bee and robo
+	STA	ENEMY_XDIR,X	; new direction
+	RTS
+	
+	; move bee in x direction
+	; ENEMY_XDIR
+	; 128 move left(- map pos)
+	; 64 move right(+ map pos)
+
+MOVNG2	LDA	ENEMY_XDIR,X
+	ASL	A
+	BCC	RIMMER2
+	JSR	ENEMY_SIDE	; moveing left
+	BEQ	MONV2
+	LDA	#64	; move other way
+	STA	ENEMY_XDIR,X
+	JMP	CARO2	; no x move until next frame
+MONV2	LDA	#-2
+	JMP	MOVIT2
+RIMMER2	JSR	ENEMY_SIDE
+	BEQ	MONS2
+	LDA	#128	; move other way
+	STA	ENEMY_XDIR,X
+	JMP	CARO2	; skip move until next frame
+MONS2	LDA	#2	; move right into map
+MOVIT2	JSR	MOVE_SPRITEX	; slowly move
+
+	; move bee in y direction
+	; ENEMY_COUNT index to table
+CARO2	LDY	ENEMY_COUNT,X
+	CPY	#20	; half way through table
+	BCS	FET
+	JSR	ENEMY_HEAD	; look above enemy head
+	BEQ	MOVBE	; can move
+	LDA	#20	; index to middle
+	JMP	PASTROBO1
+FET	JSR	ENEMY_FEET	; below feet
+	BEQ	MOVBE	; can move
+	JMP	PASTRO	; back to index of 0
+MOVBE	LDY	ENEMY_COUNT,X	; get back index
+	LDA	BEE_YTAB,Y
+	JSR	MOVE_SPRITEY
+	INY
+	TYA
+	STA	ENEMY_COUNT,X
+	CMP	#40
+	BCC	NO_STOP
+PASTRO	LDA	#0
+PASTROBO1	STA	ENEMY_COUNT,X
+	LDA	#40	; now hold there
+	STA	ENEMY_TIMES,X
+	LDA	#1	; delay it
+	STA	ENEMY_ACT,X
+NO_STOP	RTS
+
+	; 40 entrys for table
+BEE_YTAB	DB	-3,-3,-3,-2,-2,-2,-1,-1,-1,-1
+	DB	1,1,1,1,2,2,2,3,3,3
+	DB	3,3,3,2,2,2,1,1,1,1
+	DB	-1,-1,-1,-1,-2,-2,-2,-3,-3,-3
+
+****************************************
+*	JUMPER		*
+****************************************
+set_jumper	LDA	ENEMY_XDIR,Y	; get back init direction
+	BMI	!FACL
+	LDA	#JUMPER_RIGHT	; for x position
+	NOW
+!FACL	LDA	#JUMPER_LEFT
+	STA	ENEMY_SPR,Y
+	LDA	ENEMY_YL,Y
+	SEC
+	SBC	#5	; top base of tile below
+	STA	ENEMY_YL,Y
+	LDA	ENEMY_YH,Y
+	SBC	#0
+	STA	ENEMY_YH,Y
+	LDA	#0
+	STA	ENEMY_ACT,Y	; walking left or right (not been hit)
+	STA	ENEMY_NOHIT,Y	; able to kill
+	STA	ENEMY_TIMES,Y	; killed times (as jumps when hit)
+	LDA	#1	; on hit to kill it off
+	STA	ENEMY_DAMAGE,Y
+	LDA	#-1
+	STA	ENEMY_YDIR,Y	; add to y when wall -1 and 1 toggle
+	LDA	#4	; walk speed (well wobble)
+	STA	ENEMY_SPEED,Y
+	LDA	#20
+	STA	ENEMY_COUNT,Y	; walk count the retest distance & dir
+	LDA	#ORANGE
+	STA	ENEMY_COL,Y
+	TXA		; no STX ABS,Y
+	STA	ENEMY_TYPE,Y	; store last so show not two quick
+	JMP	DELETE_MAP	; take out of map
+
+do_jumper	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	LIVED
+	LDA	ENEMY_TIMES,X	; now see if been killed once
+	BEQ	JUMP_BE	; now jump beatle and reset bits
+	LDA	#0
+	LDY	#2
+	JSR	SCOREADD
+	JSR	RESTORE_MAP	; back in map data
+	JMP	KILL_ENEMY	; explode
+
+JUMP_BE	LDA	#1	; now do a jump
+	STA	ENEMY_ACT,X
+	LDA	#0	; jump frame count
+	STA	ENEMY_FRAME,X
+	LDA	#2	; now kill to kill
+	STA	ENEMY_DAMAGE,X
+	STA	ENEMY_NOHIT,X	; cannot hit yet
+LIVED	JSR	CHECK_SPRITE	; off screen
+	BCC	WEL	; no
+	LDA	#0	; else take off
+	STA	ENEMY_TYPE,X	; from list
+	JMP	RESTORE_MAP	; put data back to map
+
+WEL	LDA	ENEMY_ACT,X	; what to do with enemy
+	BEQ	WALKN	; walking
+
+	; jump walker
+	LDY	ENEMY_FRAME,X	; get index to table
+	LDA	GEM_TAB,Y
+	JSR	MOVE_SPRITEY	; move it bo
+	INY
+	TYA
+	STA	ENEMY_FRAME,X	
+	CMP	#12	; top of jump
+	BNE	BIGR	; nope
+	JMP	SETUP_GUIDED	; guided at robo
+
+BIGR	CMP	#25	; end of list
+	BNE	RTYPE
+	LDA	#0	; back to walk
+	STA	ENEMY_ACT,X
+	STA	ENEMY_NOHIT,X	; can kill now
+	LDA	#1	; one hit to kill
+	STA	ENEMY_DAMAGE,X	; 
+	STA	ENEMY_TIMES,X	; can now kill
+RTYPE	RTS
+
+	; walk about
+WALKN	JSR	ENEMY_FEET	; look under feet
+	BEQ	OTHERW	; if blank move other way
+	JSR	ENEMY_SIDE	; on side of walker
+	BEQ	VALPO	; blank ok to walk
+OTHERW	LDA	ENEMY_XDIR,X	; revese direction
+	EOR	#128~64	; would be either 128 or 64
+	STA	ENEMY_XDIR,X
+	LDA	#40	; set count again
+	STA	ENEMY_COUNT,X
+VALPO	DEC	ENEMY_COUNT,X
+	BNE	WALKON
+	JSR	BULLET3_SETUP	; fire all when ever
+	LDA	#20
+	STA	ENEMY_COUNT,X
+	JSR	DISTANCEX	; near to robo
+	STA	TEMP
+	LDA	MIKE1+1	; high set the far away
+	BNE	CHANGE_NOW
+	LDA	MIKE1
+	CMP	#40	; distance away from robo
+	BCC	WALKON
+CHANGE_NOW	LDA	TEMP	; which side of robo
+	BMI	WALKL	; walk left if enemy > robo
+	LDA	#64	; else walk right
+WALKL	STA	ENEMY_XDIR,X
+WALKON	LDA	ENEMY_XDIR,X	; now what wat faceing
+	BMI	W_LEF
+
+	LDA	#JUMPER_RIGHT
+	STA	ENEMY_SPR,X
+	LDA	#1	; walk right
+	JMP	MOVE_SPRITEX
+
+W_LEF	LDA	#JUMPER_LEFT
+	STA	ENEMY_SPR,X
+	LDA	#-1	; walk left
+	JMP	MOVE_SPRITEX
+
+****************************************
+*	FLY			*
+****************************************
+set_fly	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#FLY_RIGHT
+	STA	ENEMY_SPR,Y
+	LDA	#0
+	STA	ENEMY_FRAME,Y
+	STA	ENEMY_COUNT,Y	; path index
+	STA	ENEMY_ACT,Y	; is a fly (255 gem)
+	STA	ENEMY_NOHIT,Y	; able to kill
+	LDA	#1	; right away
+	STA	ENEMY_SPEED,Y
+	STA	ENEMY_DAMAGE,Y	; hits
+	LDA	#30
+	STA	ENEMY_TIMES,Y	; cycle amount
+	LDA	#255
+	STA	ENEMY_XDIR,Y	; setup direction
+	RTS
+
+do_fly	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#5	; 500 for shoot fly
+	JSR	SCOREADD
+	LDA	#GEM_SEQ	; now a gem
+	STA	ENEMY_TYPE,X
+	LDA	#128+GEM_SEQ	; gem on screen in preset data
+	LDY	ENEMY_PRESET,X
+	STA	ON_OFF,Y	; save to data as gem
+	STX	XTEMP	; save as reload in gem setup
+	TXA		; enemy index to Y as setup's use Y
+	TAY		; y is index on setup
+	JSR	RANDOM	; Get a random colour here
+	AND	#3	; only 0 to 3 for bonus weapon
+	JMP	set_gem2	; turn to a gem with correts colour info
+
+!ALIVE	DEC	ENEMY_SPEED,X
+	BNE	JUST_MOVE3
+	LDA	#4
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_FRAME,X
+	LDA	ENEMY_XDIR,X	; faceing
+	BMI	ORANGES	; left
+	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#FLY_RIGHT	; else right
+	JMP	SPR_SET3
+ORANGES	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#FLY_LEFT
+SPR_SET3	STA	ENEMY_SPR,X	; enemy sprites
+
+JUST_MOVE3	JSR	TOUCH_ROBO	; slow down Mr bean
+	DEC	ENEMY_TIMES,X	; count for each setp
+	BNE	LOADS_OFMONEY
+	LDA	#30	; reset back
+	STA	ENEMY_TIMES,X
+	LDA	ENEMY_COUNT,X
+	CLC
+	ADC	#1	; next one
+	AND	#3	; 0 1 2 3 only
+	STA	ENEMY_COUNT,X	; save index back
+	TAY
+	LDA	DIREC,Y
+	STA	ENEMY_XDIR,X	; new faceing
+LOADS_OFMONEY	LDY	ENEMY_COUNT,X
+	LDA	DIAXM,Y	; x move
+	JSR	MOVE_SPRITEX
+	LDA	DIAYM,Y	; y move
+	JSR	MOVE_SPRITEY
+	JSR	CHECK_SPRITE	; check window 1 pixel around
+	BCC	HORAY	; off screen
+SAVE_PRESET	LDA	#0
+	STA	ENEMY_TYPE,X	; free sprite position
+	LDY	ENEMY_PRESET,X	; get preset number back
+	LDA	ENEMY_SPECIAL,X	; get index for colour
+	STA	SPECIAL,Y	; save colour of gem back
+	LDA	ON_OFF,Y	; source place
+	AND	#%01111111	; mask out top
+	STA	ON_OFF,Y	; now can be reinited again
+	LDA	ENEMY_XL,X	; save sprite map poisition
+	STA	TMAP_XL,Y
+	LDA	ENEMY_XH,X
+	STA	TMAP_XH,Y
+	LDA	ENEMY_YL,X
+	STA	TMAP_YL,Y
+	LDA	ENEMY_YH,X
+	STA	TMAP_YH,Y
+	RTS
+
+HORAY	; now here and on screen now see if hit top of bottom of screens
+	JSR	ENEMY_HEAD	; hit bonce
+	BEQ	CHESYS
+	LDA	#0	; set to start
+	NOW
+STT_UP	LDA	#2	; set to go up
+	STA	ENEMY_COUNT,X
+	TAY
+	LDA	DIREC,Y	; set dieection also
+	STA	ENEMY_XDIR,X
+	LDA	#30
+	STA	ENEMY_TIMES,X
+	RTS
+CHESYS	JSR	ENEMY_FEET	; touch bottom
+	BNE	STT_UP	; set to go up
+	RTS
+
+	; Cycle table for fly in diamond shape
+S	EQU	1
+DIAXM	DB	-S,S,S,-S	
+DIAYM	DB	S,S,-S,-S
+DIREC	DB	255,0,0,255
+
+****************************************
+*	GEM FROM FLY OR PRESET	*
+****************************************
+set_gem	STX	XTEMP
+	LDA	SPECIAL,X	; special byte is gem default type
+set_gem2	STA	ENEMY_SPECIAL,Y
+	TAX
+	LDA	COYBT,X
+	STA	ENEMY_COL,Y
+	LDX	XTEMP
+	LDA	#GEM_SPR
+	STA	ENEMY_SPR,Y
+	LDA	#0
+	STA	ENEMY_NOHIT,Y	; able to kill
+	STA	ENEMY_FRAME,Y
+	STA	ENEMY_ACT,Y	; is standing (255 jump up & down)
+	LDA	#1	; right away
+	STA	ENEMY_SPEED,Y
+	STA	ENEMY_DAMAGE,Y	; hits
+	RTS
+
+do_gem	JSR	ENEMY_HIT_ROBO	; only collect gem
+	BCC	DYSAN_HD	; when robo touched it
+	LDA	#0
+	STA	ENEMY_TYPE,X	; sprite free
+	LDY	#&10	; 1000 for pickup gem
+	JSR	SCOREADD
+	LDA	#6
+	STA	FXCHAN2
+	LDY	ENEMY_SPECIAL,X	; get colour byte index
+	LDA	TOWEAP,Y
+	STA	FIREPOWER	; now is the fire power
+	LDA	SELIT,Y
+	ORA	WEAPONS
+	STA	WEAPONS	; have now got weapon
+	LDY	ENEMY_PRESET,X
+	LDA	#255	; no gem or any preset again ever
+	STA	ON_OFF,Y	; save to data as gem
+	RTS
+
+TOWEAP	DB	1,2,3,4
+SELIT	DB	1,2,4,8
+	; give weapon
+
+DYSAN_HD	DEC	ENEMY_SPEED,X
+	BNE	!JUST_MOVE
+	LDA	#4
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_FRAME,X
+	CLC
+	ADC	#GEM_SPR
+	STA	ENEMY_SPR,X	; enemy sprite
+!JUST_MOVE	JSR	CHECK_SPRITE	; off screen map
+	BCC	VISIBLE
+	JMP	SAVE_PRESET	; save its pos and exit
+
+VISIBLE	LDA	ENEMY_ACT,X	; do what to gem
+	BPL	STILL	; standing
+	JSR	RANDOM
+	AND	#3
+	STA	ENEMY_SPECIAL,X	; save as index number
+	TAY		; get new colour from rands
+	LDA	COYBT,Y
+	STA	ENEMY_COL,X	; new colour for gem
+	LDY	ENEMY_COUNT,X	; get index to table
+	LDA	GEM_TAB,Y
+	JSR	MOVE_SPRITEY	; move it bo
+	INY
+	TYA
+	STA	ENEMY_COUNT,X	
+	CMP	#25	; end of list
+	BNE	BOG_STENCH
+	LDA	#0
+	STA	ENEMY_ACT,X
+	LDA	#1	; one hit to
+	STA	ENEMY_DAMAGE,X	; jump it again
+	RTS
+
+STILL	LDA	ENEMY_DAMAGE,X
+	BNE	BOG_STENCH
+	LDA	#7
+	STA	FXCHAN3 ;2
+	LDA	#255	; jump gem
+	STA	ENEMY_ACT,X
+	LDA	#0	; index to jump table
+	STA	ENEMY_COUNT,X
+BOG_STENCH	RTS
+
+COYBT	DB	RED,GREEN,YELLOW,LT_BLUE
+
+	; up & down table for gem
+GEM_TAB	DB	-4,-4,-3,-3,-3,-2,-2,-2,-1,-1,-1,-1,0
+	DB	1,1,1,1,2,2,2,3,3,3,4,4
+
+
+LOAD_IN	IF	TAPE_LOAD=0 & DISK_LOAD=0
+	RTS
+	ENDIF
+
+	IF	TAPE_LOAD
+	INCLUDE	TLOADER.PDS	; Actuall code
+	ENDIF
+
+	IF	DISK_LOAD
+	INCLUDE	KDOS.PDS	; Actuall code
+	ENDIF
+
+	FREE	TILEMAP-*	; free code memory
+
+	ORG	&8100	; For monster and battle mode
+
+****************************************
+*	BATTLE MODE MOVEMENT	*
+****************************************
+BATTLEMOVE	LDY	MOVE	; movement from joystick byte
+	LDA	BMOVEL,Y	; do what table
+	STA	!JOCK+1
+	LDA	BMOVEH,Y
+	STA	!JOCK+2
+	LDA	#0	; cancel this move so no repeats
+	STA	MOVE	; after once dont do again
+!JOCK	JMP	&FFFF
+
+BMOVEL	DL	NOKEY	; 0 no movement pressed
+	DL	BMOVEUP	; 1
+	DL	BMOVEDOWN	; 2
+	DL	ERROR	; 3
+	DL	BMOVELEFT	; 4
+	DL	BNORTHWEST	; 5
+	DL	BSOUTHWEST	; 6
+	DL	ERROR	; 7
+	DL	BMOVERIGHT	; 8
+	DL	BNORTHEAST	; 9
+	DL	BSOUTHEAST	; 10
+
+BMOVEH	DH	ERROR
+	DH	BMOVEUP
+	DH	BMOVEDOWN
+	DH	ERROR
+	DH	BMOVELEFT
+	DH	BNORTHWEST
+	DH	BSOUTHWEST
+	DH	ERROR
+	DH	BMOVERIGHT
+	DH	BNORTHEAST
+	DH	BSOUTHEAST
+
+****************************************
+*	diagonal move 1		*
+****************************************
+BNORTHEAST	JSR	BMOVERIGHT	; do right move first
+	JMP	BMOVEUP	; all up move checking
+****************************************
+*	diagonal move 2		*	
+****************************************
+BNORTHWEST	JSR	BMOVELEFT
+	JMP	BMOVEUP
+****************************************
+*	diagonal move 3		*	
+****************************************
+BSOUTHEAST	JSR	BMOVERIGHT
+	JMP	BMOVEDOWN
+****************************************
+*	diagonal move 4		*
+****************************************
+BSOUTHWEST	JSR	BMOVELEFT	; same rules as above
+	JMP	BMOVEDOWN
+****************************************
+*	move robo left		*
+****************************************
+BMOVELEFT	LDA	ROBO_XL	; robo map - 2
+	CMP	#&2E
+	BCC	!CARRY
+	SEC
+	SBC	#2
+	STA	ROBO_XL
+	BCS	!CARRY
+	DEC	ROBO_XH
+!CARRY	RTS
+****************************************
+*	move robo right		*
+****************************************
+BMOVERIGHT	LDA	ROBO_XL	; robo map + 2
+	CMP	#&70
+	BCS	!CARRY
+	CLC
+	ADC	#2
+	STA	ROBO_XL
+	BCC	!CARRY
+	INC	ROBO_XH
+	CLC
+!CARRY	RTS
+****************************************
+*	move robo up		*
+****************************************
+BMOVEUP	LDA	ROBO_YL	; robo map - 2
+	CMP	#&22
+	BCC	!CARRY
+	SEC
+	SBC	#2
+	STA	ROBO_YL
+	BCS	!CARRY
+	DEC	ROBO_YH
+!CARRY	RTS
+****************************************
+*	move robo down		*
+****************************************
+BMOVEDOWN	LDA	ROBO_YL	; robo map + 2
+	CMP	#&82	; bottom of screen
+	BCS	!CARRY
+	CLC
+	ADC	#2
+	STA	ROBO_YL
+	BCC	!CARRY
+	INC	ROBO_YH
+!CARRY	RTS
+
+****************************************
+*	BATTLE MODE CLOUDS	*
+****************************************
+set_bcloud	LDA	SPECIAL,X		; what way to move cloud up / down
+	STA	ENEMY_YDIR,Y	; use as actual move value +2 , -2
+	LDA	#0
+	STA	ENEMY_NOHIT,Y	; able to kill
+	STA	ENEMY_ACT,Y		; alive moveing
+	LDA	#CLOUD_SPR
+	STA	ENEMY_SPR,Y
+	LDA	#4	; frame speed factor
+	STA	ENEMY_SPEED,Y
+	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#1	; on hit to kill it off
+	STA	ENEMY_DAMAGE,Y
+	RTS
+
+SODOF	LDA	#1
+	STA	ENEMY_DAMAGE,X
+	LDA	#0
+	STA	ENEMY_ACT,X
+
+do_bcloud	LDA	ENEMY_ACT,X		; hit already
+	BNE	EXPL		; explodeing
+	LDA	ENEMY_DAMAGE,X	; hit yet
+	BNE	ALIVED
+
+;	LDA	ENEMY_YL,X
+;	CMP	#&16		; bodge
+;	BCC	SODOF
+
+	LDA	#0		; first explode frame
+	STA	ENEMY_FRAME,X	; exploding frame start index
+	LDA	#1
+	STA	ENEMY_ACT,X		; mark as dead
+	STA	ENEMY_NOHIT,X	; no can kill again
+	LDA	#2
+	STA	ENEMY_SPEED,X	; update next time or so
+	LDA	#BROWN		; exploding part is brown
+	STA	ENEMY_COL,X
+EXPL	LDA	ENEMY_FRAME,X	; what number
+	CMP	#8		; last bit
+	BCS	JUST_MOVE		; leave blank until off screen
+	ADC	#EXPLODE_SPR	; exploding
+	STA	ENEMY_SPR,X
+	DEC	ENEMY_SPEED,X	; frame speed in explosion
+	BNE	JUST_MOVE
+	LDA	#2		; quickly
+	STA	ENEMY_SPEED,X
+	LDA	ENEMY_FRAME,X
+	CLC
+	ADC	#1
+	STA	ENEMY_FRAME,X	; up index
+	CMP	#8		; last exploding bit	
+	BCC	JUST_MOVE
+	LDA	#BL		; blank when at end
+	STA	ENEMY_SPR,X
+	JMP	JUST_MOVE		; still move cloud
+
+ALIVED	DEC	ENEMY_SPEED,X
+	BNE	JUST_MOVE
+	LDA	#3
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_FRAME,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_FRAME,X
+	CLC
+	ADC	#CLOUD_SPR
+	STA	ENEMY_SPR,X
+JUST_MOVE	LDA	ENEMY_YDIR,X	; base for move
+	JSR	MOVE_SPRITEY	; do a move first
+	LDA	ENEMY_YL,X		; where got to
+	CMP	#&0A		; when move up off top
+	BEQ	SET_BO		; set back to off bottom
+	CMP	#&9A		; reached off bottom
+	BEQ	SET_TO		; then reset to top
+	RTS
+
+SET_BO	LDA	#&9A		; off bottom
+	NOW
+SET_TO	LDA	#&0A
+	STA	ENEMY_YL,X		; now new cord
+	LDA	#0
+	STA	ENEMY_ACT,X		; alive
+	STA	ENEMY_NOHIT,X	; and can now kill
+	LDA	#MED_GREY
+	STA	ENEMY_COL,X		; set cloud colour back
+	LDA	#1
+	STA	ENEMY_DAMAGE,X	; one hit to kill
+	RTS
+
+****************************************
+*	BATTLE MODE MONSTER	*
+****************************************
+set_benemy	STX	XTEMP
+	LDA	SPECIAL,X		; what way to move cloud up / down
+	TAX			; battle number as index to data bits
+	CLC
+	ADC	#BATTLE_SPR
+	STA	ENEMY_SPR,Y
+	LDA	BU_COL,X
+	STA	ENEMY_COL,Y
+	LDA	BU_TAB,X		; poke into bullet code
+	STA	BU_USE+1		; where check free bullet is
+	LDX	XTEMP		; preset index back
+	LDA	#1		; move to robo quickly
+	STA	ENEMY_SPEED,Y
+	STA	ENEMY_DAMAGE,Y	; to kill
+	LDA	#6		; delay for bullet fireing
+	STA	ENEMY_COUNT,Y
+	LDA	#-2
+	STA	ENEMY_YDIR,Y	; first move direction
+	LDA	#-6		; speed at which will move
+	STA	ENEMY_XDIR,Y	; for bullet setup (as uses pipes one)
+	LDA	#0
+	STA	ENEMY_NOHIT,Y	; able to kill
+	STA	ENEMY_ACT,Y		; home in on player
+	RTS
+
+BU_TAB	DB	BU_START+1		; first battle one bullet
+	DB	BU_START+2		; second two
+	DB	BU_START+3		; third three
+	DB	BU_START+MAX_BUL	; last all (four)
+
+BU_COL	DB	10		; battle mode monsters
+	DB	12		; colours
+	DB	05
+	DB	14
+
+do_benemy	; none will hit me so act normal
+	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	!ALIVE
+	JSR	EXPLODE_ALL		; explode all sprites
+	LDA	#BU_START+MAX_BUL	; all bullets for enemy can fire
+	STA	BU_USE+1
+	LDX	#EN_START-1		; when return INX so start again
+	LDA	#0		; that are in use
+	LDY	#&10		; some points
+	JMP	SCOREADD
+
+!ALIVE	LDA	ENEMY_ACT,X		; want to do what
+	BEQ	HOMEIN		; Home in on robo
+	; move out of way of bullet
+AVOID	DEC	ENEMY_TIMES,X	; times to move away
+	BNE	GOS
+REBA	LDA	#0
+	STA	ENEMY_ACT,X
+	STA	ENEMY_YDIR,X	; no move until delay back
+	LDA	#1
+	STA	ENEMY_SPEED,X	; next frame setup home in
+	JMP	HOMEIN		; now home back in
+
+GOS	LDA	ENEMY_XL,X		; look at where is
+	CMP	#&F6		; if at right edge
+	BEQ	FARRI		; then move no more
+	LDA	#2
+	JSR	MOVE_SPRITEX
+FARRI	LDA	ENEMY_YDIR,X	; what way to move
+	BPL	GOD		; going down
+	LDA	#&20		; else top y is
+	NOW
+GOD	LDA	#&82		; max y is
+	CMP	ENEMY_YL,X		; robo at these cords
+	BEQ	STCTD		; dont know what to do so fire
+	LDA	ENEMY_YDIR,X	; else move
+	JSR	MOVE_SPRITEY
+STCTD	JMP	FIRE_CL		; still fireing
+
+HOMEIN	; Now look at robo bullets to see if any will hit me
+	; if so then avoid the nearest that will
+	LDY	#2		; 3 bullets for robo allways
+ALC	LDA	WEAPON_USE,Y
+	BEQ	T
+	JSR	BULLETX		; x distance
+	BPL	OK		; in front
+	LDA	MIKE1+1		; far to big
+	BNE	T
+	LDA	MIKE1		; 1 sprite size past
+	CMP	#40		; past enemy
+	BCS	T
+OK	JSR	BULLETY		; y distance
+	STA	MIKE1		; save (as dont want to destroy YDIR)
+	LDA	MIKE2		; distance away from bullet
+	CMP	#18 ;3		; both side will miss
+	BCS	T		; just to big
+	LDA	#14		; distance to move away
+	STA	ENEMY_TIMES,X	; count
+	LDA	#1
+	STA	ENEMY_ACT,X
+	LDA	ENEMY_YL,X		; look at cord now if to near bottom move up
+	CMP	#&6E
+	BCS	GOBU	;OKS
+	CMP	#&34
+	BCS	OKS
+	LDA	#2
+	NOW
+GOBU	LDA	#-2		; force to move up
+	NOW
+OKS	LDA	MIKE1		; new y move direction
+	STA	ENEMY_YDIR,X	; move away
+	JMP	AVOID		; go to move
+
+T	DEY			; look at all of them
+	BPL	ALC
+
+	LDA	ENEMY_XL,X		; look at where is
+	CMP	#&B6		; right at edge of clouds
+	BEQ	FARLEFT
+	LDA	#-2		; else move there
+	JSR	MOVE_SPRITEX
+FARLEFT	DEC	ENEMY_SPEED,X	; delay for new move position
+	BNE	MOVE_AR
+	LDA	#6
+	STA	ENEMY_SPEED,X	; from temp save
+	JSR	DISTANCEY
+	STA	MIKE1
+	LDA	MIKE2
+	ORA	MIKE2+1
+	BEQ	MOVE_AR
+	LDA	MIKE1		; get back status
+	BMI	MOVEDOW1
+	LDA	#2
+	NOW
+MOVEDOW1	LDA	#-2
+	NOW
+SLWA	LDA	#0
+	STA	ENEMY_YDIR,X
+FIRE_CL	DEC	ENEMY_COUNT,X
+	BNE	LEMON
+	LDA	#20 ;6
+	STA	ENEMY_COUNT,X
+	JMP	BULLET4_SETUP
+
+MOVE_AR	LDA	ENEMY_YDIR,X
+	JSR	MOVE_SPRITEY
+	JSR	DISTANCEY		; see if on same line
+	LDA	MIKE2
+	ORA	MIKE2+1
+	BEQ	SLWA		; is so then no more delay move
+	JMP	FIRE_CL
+
+	; get distance in x from robo bullet and enemy position
+	; save to mike2 and mike2+1 low high
+	; X enemy index
+	; Y Robo bullet 
+BULLETX	LDA	ENEMY_XL,X
+	SEC
+	SBC	BULLET_XL,Y
+	STA	MIKE1
+	LDA	ENEMY_XH,X
+	SBC	BULLET_XH,Y
+	BCC	TAKE4A
+	STA	MIKE1+1
+	LDA	#64
+LEMON	RTS
+
+	; get x distance when bullet is the larger
+TAKE4A	LDA	BULLET_XL,Y
+	SEC
+	SBC	ENEMY_XL,X
+	STA	MIKE1
+	LDA	BULLET_XH,Y
+	SBC	ENEMY_XH,X
+	STA	MIKE1+1
+	LDA	#128
+	RTS
+
+	; get distance in y from robo bullet and enemy position
+	; save to mike2 and mike2+1 low high
+	; X enemy index
+	; Y Robo bullet 
+BULLETY	LDA	ENEMY_YL,X
+	SEC
+	SBC	BULLET_YL,Y
+	STA	MIKE2
+	LDA	ENEMY_YH,X
+	SBC	BULLET_YH,Y
+	BCC	!TAKE4
+	STA	MIKE2+1
+	LDA	#2
+	RTS
+
+	; get y distance when bullet is the larger
+!TAKE4	LDA	BULLET_YL,Y
+	SEC
+	SBC	ENEMY_YL,X
+	STA	MIKE2
+	LDA	BULLET_YH,Y
+	SBC	ENEMY_YH,X
+	STA	MIKE2+1
+	LDA	#-2		; move up when bullet bigger
+	RTS
+
+****************************************
+*	BATTLE ENEMY FLAMES AT FEET	*
+****************************************
+set_befl	LDA	#1		; can not kill flames
+	STA	ENEMY_NOHIT,Y	; ever
+	LDA	#ROBO_L+3		; flames under enemy feet as robos
+	STA	ENEMY_SPR,Y
+	LDA	#4
+	STA	ENEMY_SPEED,Y	; flicker two flames all time
+	LDA	#ORANGE
+	STA	ENEMY_COL,Y
+	RTS
+
+do_befl	LDA	ENEMY_XL-1,X	; last enemy was battle creature
+	STA	ENEMY_XL,X		; flames at his feet
+	LDA	ENEMY_XH-1,X
+	STA	ENEMY_XH,X
+	LDA	ENEMY_YL-1,X
+	CLC
+	ADC	#24
+	STA	ENEMY_YL,X
+	LDA	ENEMY_YH-1,X
+	ADC	#0
+	STA	ENEMY_YH,X
+
+	DEC	ENEMY_SPEED,X	; delay sprite swap
+	BNE	OFFI
+	LDA	#4		; delay
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_COUNT,X
+	INY
+	TYA
+	AND	#3
+	STA	ENEMY_COUNT,X
+	CLC
+	ADC	#ROBO_R+7
+	STA	ENEMY_SPR,X
+OFFI	RTS
+
+

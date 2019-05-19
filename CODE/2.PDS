@@ -1,0 +1,1481 @@
+****************************************
+*	DRAW ONE GAME SCREEN	*
+****************************************
+ALLSCREEN	LDA	#8	; tiles down screen
+	STA	YTEMP	; count save
+TOPL	LDA	#>SCREEN1
+	STA	SCREEN
+	STA	COLOUR
+	LDA	#<SCREEN1
+	STA	SCREEN+1
+	LDA	#<NYBBLE
+	STA	COLOUR+1
+
+	LDX	YOFFSET	; yoffset down map for start
+	STX	XTEMP
+NEXTLINE	LDA	XOFFSET	; x offset into map (should be 0)
+	CLC
+	ADC	GMAPL,X
+	STA	MAP_MEM+1
+	LDA	GMAPH,X
+	ADC	#0
+	STA	MAP_MEM+2
+	LDA	#20	; x loop
+	STA	TEMP
+	LDA	#0
+	STA	MIKE1	; map offset
+	STA	MIKE2	; top screen offset
+	LDA	#40	; next line screen offset
+	STA	MIKE2+1
+
+ACROSS	LDY	MIKE1	; map offset
+MAP_MEM	LDX	&FFFF,Y	; tile byte for map
+
+	; plot  2 by 2 block
+	LDY	MIKE2	; now get screen offset
+	LDA	TILETL,X
+	STA	(SCREEN),Y
+	LDA	TCOLTL,X
+	STA	(COLOUR),Y
+	INY
+	LDA	TILETR,X
+	STA	(SCREEN),Y
+	LDA	TCOLTR,X
+	STA	(COLOUR),Y
+
+	LDY	MIKE2+1	; next line
+	LDA	TILEBL,X
+	STA	(SCREEN),Y
+	LDA	TCOLBL,X
+	STA	(COLOUR),Y
+	INY
+	LDA	TILEBR,X
+	STA	(SCREEN),Y
+	LDA	TCOLBR,X
+	STA	(COLOUR),Y
+
+	INC	MIKE1	; map offset next tile x
+	LDA	MIKE2
+	CLC
+	ADC	#2	; 2 bytes along
+	STA	MIKE2
+	ADC	#40	; line below
+	STA	MIKE2+1
+
+	DEC	TEMP	; along screen
+	BNE	ACROSS
+
+	LDA	SCREEN	; 2 lines down for next tile place
+	CLC
+	ADC	#80
+	STA	SCREEN
+	STA	COLOUR
+	BCC	GOLD
+	INC	SCREEN+1
+	INC	COLOUR+1
+GOLD	INC	XTEMP	; next line in map
+	LDX	XTEMP
+	DEC	YTEMP	; y loop
+	BNE	NEXTLINE
+	RTS
+
+	; do a cls for title screen
+CLS	LDA	#0
+	LDY	#200
+BLSCR	STA	PSCREEN-1,Y
+	STA	PSCREEN+200-1,Y
+	STA	PSCREEN+400-1,Y
+	STA	PSCREEN+600-1,Y
+	STA	PSCREEN+800-1,Y
+	DEY
+	BNE	BLSCR	
+	RTS
+
+
+	; add to score A lo Y hi in BCD
+SCOREADD	SED
+	CLC
+	ADC	SCORELO
+	STA	SCORELO
+	TYA
+	ADC	SCOREMI
+	STA	SCOREMI
+	LDA	SCOREHI
+	ADC	#0
+	STA	SCOREHI
+	CLD
+	RTS
+
+	; scores
+	; pickup gem 1000	; *
+	; pipe       500	; *
+	; fly        500	; *
+	; turrets    100	; *
+	; pods       500	; *
+	; full monster no.*10000
+	; snail      200	; *
+	; clouds     100	; *
+	; bees       200	; *
+	; jumper     500	; *
+	; battle mode 2000
+
+	; plot pannel values (score lives time)
+PPANEL	LDX	#30
+	LDA	LIVES
+	JSR	BOTB
+	LDX	#4
+	LDA	SCOREHI
+	JSR	TOPB
+	LDA	SCOREMI
+	JSR	TOPB
+	LDA	SCORELO
+	;JSR	TOPB
+TOPB	PHA
+	LSR	A
+	LSR	A
+	LSR	A
+	LSR	A
+	CLC
+	ADC	#1
+	STA	PSCREEN+((PANY+2)*40),X
+	INX
+	PLA
+BOTB	AND	#15
+	CLC
+	ADC	#1
+	STA	PSCREEN+((PANY+2)*40),X; numbers all on same line
+	INX		; next along
+	RTS		; colour memory allways set
+
+	; PLOT WEAPONS ONTO PANNEL
+	; FIREPOWER byte ( weapon currently selected )
+	; 0 standard default gun not shown on pannel
+	; 1 large fire burst
+	; 2 three way thin bullets
+	; 3 large atomic bomb
+	; 4 five bullet spray
+	; WEAPONS bits ( weapons available )
+	; 1 large fire burst
+	; 2 three way thin bullets
+	; 4 large atomic bomb
+	; 8 five bullet spray
+	; also the speed up processing ie repeated plotting of data
+	; last value bytes are held for comparasion
+PLOT_WEAPONS	LDA	#1
+	BIT	WEAPONS
+	BEQ	BLANK1	; not availible
+	LDX	#1	; large bullet
+	LDA	FIREPOWER
+	CMP	#1	; selected
+	BNE	PLOT1	; if so then high lite it
+	INX		; large bullet highlited
+	NOW
+BLANK1	LDX	#0
+PLOT1	CPX	#255
+	BEQ	SKIP1
+	STX	PLOT1+1	; new is compare as old
+	LDY	#11
+	JSR	PLWEAPON	; plot a weapon
+
+SKIP1	LDA	#2
+	BIT	WEAPONS
+	BEQ	BLANK2	; not availible
+	LDX	#3	; three way
+	LDA	FIREPOWER
+	CMP	#2	; selected
+	BNE	PLOT2	; if so then high lite it
+	INX		; large bullet highlited
+	NOW
+BLANK2	LDX	#0
+PLOT2	CPX	#255
+	BEQ	SKIP2
+	STX	PLOT2+1
+	LDY	#11+4
+	JSR	PLWEAPON	; plot a weapon
+
+SKIP2	LDA	#4
+	BIT	WEAPONS
+	BEQ	BLANK3	; not availible
+	LDX	#5	; atomic bomb
+	LDA	FIREPOWER
+	CMP	#3	; selected
+	BNE	PLOT3	; if so then high lite it
+	INX		; large bullet highlited
+	NOW
+BLANK3	LDX	#0
+PLOT3	CPX	#255
+	BEQ	SKIP3
+	STX	PLOT3+1
+	LDY	#11+4+4
+	JSR	PLWEAPON	; plot a weapon
+
+SKIP3	LDA	#8
+	BIT	WEAPONS
+	BEQ	BLANK4	; not availible
+	LDX	#7	; five bullet spray
+	LDA	FIREPOWER
+	CMP	#4	; selected
+	BNE	PLOT4	; if so then high lite it
+	INX		; large bullet highlited
+	NOW
+BLANK4	LDX	#0
+PLOT4	CPX	#255
+	BEQ	SKIP5
+	STX	PLOT4+1
+	LDY	#11+4+4+4
+PLWEAPON	LDA	CHR1,X	; character
+	STA	PSCREEN+((PANY+1)*40)+0,Y
+	LDA	CHR2,X
+	STA	PSCREEN+((PANY+1)*40)+1,Y
+	LDA	CHR3,X
+	STA	PSCREEN+((PANY+1)*40)+2,Y
+	LDA	CHR4,X
+	STA	PSCREEN+((PANY+1)*40)+3,Y
+	LDA	CHR5,X
+	STA	PSCREEN+((PANY+2)*40)+0,Y
+	LDA	CHR6,X
+	STA	PSCREEN+((PANY+2)*40)+1,Y
+	LDA	CHR7,X
+	STA	PSCREEN+((PANY+2)*40)+2,Y
+	LDA	CHR8,X
+	STA	PSCREEN+((PANY+2)*40)+3,Y
+SKIP5	RTS
+
+CHR1	DB	&EC,&AC,&A8,&AC,&A8,&AC,&A8,&AC,&A8
+CHR2	DB	&ED,&A5,&A1,&AD,&A9,&B5,&B1,&BD,&B9
+CHR3	DB	&EE,&A6,&A2,&AE,&AA,&B6,&B2,&BE,&BA
+CHR4	DB	&EF,&AF,&AB,&AF,&AB,&B7,&B3,&BF,&BB
+CHR5	DB	&F0,&CC,&C8,&CC,&C8,&CC,&C8,&CC,&C8
+CHR6	DB	&F1,&C5,&C1,&CD,&C9,&D5,&D1,&DD,&D9
+CHR7	DB	&F2,&C6,&C2,&CE,&CA,&D6,&D2,&DE,&DA
+CHR8	DB	&F3,&C7,&C3,&C7,&C3,&D7,&D3,&DF,&DB
+
+	; plot tile into selected sprite A=tile Y= sprite pos
+PLTILE	STY	YTEMP
+	TAX	
+	LDA	SPMEML,Y	; memory for pointer
+	STA	MIKE2
+	LDA	SPMEMH,Y
+	STA	MIKE2+1
+	LDA	TOPLEFT,X
+	JSR	POKECHAR
+	LDA	MIKE2
+	CLC
+	ADC	#3*8	; now plot char below this one
+	STA	MIKE2
+	LDA	BOTLEFT,X
+	JSR	POKECHAR
+
+	LDY	YTEMP	; get back sprpos
+	LDA	SPMEML+1,Y	; memory for pointer along one
+	STA	MIKE2
+	LDA	SPMEMH+1,Y
+	STA	MIKE2+1
+	LDA	TOPRIGHT,X
+	JSR	POKECHAR
+	LDA	MIKE2
+	CLC
+	ADC	#3*8	; now plot char below this one
+	STA	MIKE2
+	LDA	BOTRIGHT,X
+	JMP	POKECHAR
+
+FP	EQU	218	; first sprite pointer
+
+	; table to point to sprite mem positions first two for score
+SPMEML	DL	(PSPRITES+((FP+0)*64)+0)	; sprite 0	; 0
+	DL	(PSPRITES+((FP+0)*64)+1)	; sprite 0
+	DL	(PSPRITES+((FP+0)*64)+2)	; sprite 0	; 2
+	DL	(PSPRITES+((FP+1)*64)+0)	; sprite 1
+	DL	(PSPRITES+((FP+1)*64)+1)	; sprite 1	; 4
+	DL	(PSPRITES+((FP+1)*64)+2)	; sprite 1
+	; space between sprites
+	DL	(PSPRITES+((FP+2)*64)+1)	; sprite 2	; 6
+	DL	(PSPRITES+((FP+2)*64)+2)	; sprite 2
+	DL	(PSPRITES+((FP+3)*64)+0)	; sprite 3	; 8
+	DL	(PSPRITES+((FP+3)*64)+1)	; sprite 3
+
+SPMEMH	DH	(PSPRITES+((FP+0)*64)+0)	; sprite 0	; 0
+	DH	(PSPRITES+((FP+0)*64)+1)	; sprite 0
+	DH	(PSPRITES+((FP+0)*64)+2)	; sprite 0	; 2
+	DH	(PSPRITES+((FP+1)*64)+0)	; sprite 1
+	DH	(PSPRITES+((FP+1)*64)+1)	; sprite 1	; 4
+	DH	(PSPRITES+((FP+1)*64)+2)	; sprite 1
+
+	DH	(PSPRITES+((FP+2)*64)+1)	; sprite 2	; 6
+	DH	(PSPRITES+((FP+2)*64)+2)	; sprite 2
+	DH	(PSPRITES+((FP+3)*64)+0)	; sprite 3	; 8
+	DH	(PSPRITES+((FP+3)*64)+1)	; sprite 3
+
+POKECHAR	LDY	#<(TCHARSET/8)	; when mem set up already
+	STY	MIKE1+1	; chars at charset
+	ASL	A	; * 2
+	ROL	MIKE1+1
+	ASL	A	; * 4
+	ROL	MIKE1+1
+	ASL	A	; * 8
+	ROL	MIKE1+1
+	STA	MIKE1	; low byte
+
+	LDY	#0
+	LDA	(MIKE1),Y	; plot data in sprite pointer
+	STA	(MIKE2),Y
+	INY
+	LDA	(MIKE1),Y
+	LDY	#1*3
+	STA	(MIKE2),Y
+
+	LDY	#2
+	LDA	(MIKE1),Y
+	LDY	#2*3
+	STA	(MIKE2),Y
+	LDY	#3
+	LDA	(MIKE1),Y
+	LDY	#3*3
+	STA	(MIKE2),Y
+	LDY	#4
+	LDA	(MIKE1),Y
+	LDY	#4*3
+	STA	(MIKE2),Y
+	LDY	#5
+	LDA	(MIKE1),Y
+	LDY	#5*3
+	STA	(MIKE2),Y
+	LDY	#6
+	LDA	(MIKE1),Y
+	LDY	#6*3
+	STA	(MIKE2),Y
+	LDY	#7
+	LDA	(MIKE1),Y
+	LDY	#7*3
+	STA	(MIKE2),Y
+	RTS
+
+PANNELSETUP	LDX	#40*4
+PLOTPAN	LDA	PANNEL-1,X
+	STA	PSCREEN+(PANY*40)-1,X
+	LDA	PANELCOL-1,X
+	STA	NYBBLE+(PANY*40)-1,X
+	DEX
+	BNE	PLOTPAN
+	RTS
+
+PANNEL	HEX 2E28292A2B2C2D262728292A2B2C2D262728292A2B2C2D262728292A2B2C2D262728292A2B3A0000
+	HEX 2FFEF4A3A4FAFBFCFDC4A7ECEDEEEFECEDEEEFECEDEEEFECEDEEEF9FE0E100A0CBCFB4B8F6B00000
+	HEX 30F5DCB0010101010101DCF0F1F2F3F0F1F2F3F0F1F2F3F0F1F2F3B0E2E301C0D4F8F9D8F7D00000
+	HEX 31343536373839323334353637383932333435363738393233343536373839323334353637380000
+
+PANELCOL	HEX 0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0000
+	HEX 0F0F0F0F0F050505050F0F090909090909090909090909090909090F0909000F0505050F0F0F0000
+	HEX 0F0F0F0F0101010101010F090909090909090909090909090909090F0909010F0101010F0F0F0000
+	HEX 0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0000
+
+****************************************
+*	high score table stuff	*
+****************************************
+HOWMANY	EQU	5	; AMOUNT OF NAMES
+
+	; see if you are in high table
+CHECKPLAYER
+	LDA	CHEATMODE	; now look to see if player has cheated
+	BEQ	CHEATED	; bladdy cheater
+	LDX	#0
+INTABLE	LDY	OFFSET,X	; get where point to
+	LDA	SCOREHI	; score high
+	CMP	SCORETABH,Y
+	BCC	BELOW
+	BNE	INSERT
+	LDA	SCOREMI	; score midium
+	CMP	SCORETABM,Y
+	BCC	BELOW
+	BNE	INSERT
+	LDA	SCORELO	; score low
+	CMP	SCORETABL,Y
+	BCS	INSERT
+BELOW	INX
+	CPX	#HOWMANY
+	BNE	INTABLE
+CHEATED	CLC		; not in table
+	RTS
+
+INSERT	STX	MIKE2+1	; placement of name
+	LDA	OFFSET+4	; LAST PLACED NAME KILLED OFF
+	STA	MIKE1	; FREE SPACE
+	LDY	MIKE2+1
+	CPY	#HOWMANY-1
+	BEQ	NOSHUFFEL
+	DEY
+	STY	MIKE2
+	LDY	#HOWMANY-1
+SHUFF	LDA	OFFSET-1,Y	; MOVE DOWN 1 PLACE
+	STA	OFFSET,Y
+	DEY
+	CPY	MIKE2
+	BNE	SHUFF
+NOSHUFFEL	LDY	MIKE2+1	; new place for name
+	LDA	MIKE1	; free space as last name
+	STA	OFFSET,Y	; gets knocked off table
+	TAY
+	LDA	SCORELO
+	STA	SCORETABL,Y
+	LDA	SCOREMI
+	STA	SCORETABM,Y
+	LDA	SCOREHI
+	STA	SCORETABH,Y
+	LDA	NUMBS_LEFT
+	STA	ACTG,Y
+	LDA	NUMBS_RIGHT
+	BNE	LETT
+	LDA	#32
+LETT	STA	ACTG1,Y
+	LDA	#"A"	; AAA to start with
+	STA	NAMEL1,Y
+	STA	NAMEL2,Y
+	STA	NAMEL3,Y
+	SEC		; name to enter
+	RTS		; Y as index to place
+
+DISPLAYHIGH	LDA	#>PSCREEN+(10*40)+8
+	STA	SCREEN
+	STA	COLOUR
+	LDA	#<PSCREEN+(10*40)+8
+	STA	SCREEN+1
+	LDA	#<NYBBLE+(10*40)+8
+	STA	COLOUR+1
+	LDX	#255
+ALLNAMES	INX
+	LDY	#0
+PLOTNAMES	LDA	TSPRER,X
+	BEQ	BLANKONE
+	CMP	#255
+	BEQ	EXTR	; exit.
+	CMP	#253	; colour change
+	BNE	NOCOLCH
+	INX
+	LDA	TSPRER,X
+	STA	COLBYTE2+1
+	INX
+	JMP	PLOTNAMES	; advance on
+NOCOLCH	CMP	#32
+	BEQ	BLANKONE
+	CMP	#254
+	BEQ	SKIPT
+	CMP	#65
+	BCS	BIGN
+	ADC	#8
+BIGN	SBC	#65-11
+	NOW
+BLANKONE	LDA	#0
+	STA	(SCREEN),Y
+COLBYTE2	LDA	#255	; colour nybble
+	STA	(COLOUR),Y
+SPACEY	INX
+	INY
+	BNE	PLOTNAMES	
+EXTR	RTS		; exit then
+
+SKIPT	LDA	SCREEN
+	CLC
+	ADC	#40	; one line at a time
+	STA	SCREEN
+	STA	COLOUR
+	BCC	HIGHBY
+	INC	SCREEN+1
+	INC	COLOUR+1
+HIGHBY	JMP	ALLNAMES
+	
+TSPRER	DB	253,1,"RANK    SCORE  ACT  NAME",254,254,254
+SCOREP	DB	253,2," 1ST   666660   1   MJA",254,254
+	DB	253,3," 2ND   666660   1   MJA",254,254
+	DB	253,4," 3RD   666660   1   MJA",254,254
+	DB	253,5," 4TH   666660   1   MJA",254,254
+	DB	253,6," 5TH   666660   1   MJA",255,254
+
+INSERTN	LDX	#0	; SPRER TO DATA ABOVE
+	STX	TEMP
+ALLIN	LDY	TEMP
+	LDA	OFFSET,Y	; SPRER TO DATA SET
+	TAY
+	LDA	SCORETABH,Y	; SCORE HIGH
+	REPEAT	4
+	LSR	A
+	ORA	#"0"
+	STA	SCOREP+9,X
+	LDA	SCORETABH,Y
+	AND	#15
+	ORA	#"0"
+	STA	SCOREP+10,X
+
+	LDA	SCORETABM,Y	; SCORE MID
+	REPEAT	4
+	LSR	A
+	ORA	#"0"
+	STA	SCOREP+11,X
+	LDA	SCORETABM,Y
+	AND	#15
+	ORA	#"0"
+	STA	SCOREP+12,X
+
+	LDA	SCORETABL,Y	; SCORE LOW
+	REPEAT	4
+	LSR	A
+	ORA	#"0"
+	STA	SCOREP+13,X
+	LDA	SCORETABL,Y
+	AND	#15
+	ORA	#"0"
+	STA	SCOREP+14,X
+
+	LDA	ACTG,Y
+	STA	SCOREP+18,X
+	LDA	ACTG1,Y
+	STA	SCOREP+19,X
+
+	LDA	NAMEL1,Y	; first letter
+	STA	SCOREP+22,X
+	LDA	NAMEL2,Y	; second letter
+	STA	SCOREP+23,X
+	LDA	NAMEL3,Y	; third letter
+	STA	SCOREP+24,X
+	TXA
+	CLC
+	ADC	#27
+	TAX
+	INC	TEMP
+	LDA	TEMP
+	CMP	#HOWMANY	; AMOUNT OF NAMES
+	BCC	ALLIN
+
+	LDY	#0
+ALLLIST	LDX	MULTABLE,Y
+MORZPS	LDA	SCOREP+8,X
+	CMP	#"0"
+	BNE	NEXLINE
+	LDA	#32	; STRIP TOP ZPS
+	STA	SCOREP+8,X
+	INX
+	BNE	MORZPS	; MORE OF THEM
+NEXLINE	INY
+	CPY	#HOWMANY
+	BNE	ALLLIST
+	RTS
+
+MULTABLE	DB	0,1*27,2*27,3*27,4*27
+
+SCORETABL	DB	&00,&00,&00,&00,&00	; SCORES
+SCORETABM	DB	&07,&06,&05,&04,&03
+SCORETABH	DB	&00,&00,&00,&00,&00
+ACTG	DB	"2211111"	; got to what act number
+ACTG1	DB	"       "
+OFFSET	DB	0,1,2,3,4
+NAMEL1	DB	"MMSRJ"
+NAMEL2	DB	"JA H "
+NAMEL3	DB	"AKWBG"
+
+
+****************************************
+*	NOW CODE TO CONTROL GAME	*
+****************************************
+START_CODE	SEI		; start of game code
+	CLD
+	LDX	#255
+	TXS
+	LDA	#127	; lock shit OS up
+	STA	CIA1ICR
+	STA	CIA2ICR
+	LDA	CIA1ICR
+	LDA	CIA2ICR
+	LDA	#%10000000	; set frequency 50 Hz
+	STA	CIA1CRA
+	LDA	#>IGNORE	; set all hardware vectors
+	STA	NMIVECTOR	; point to an RTI
+	STA	RESETVECTOR	; all system stuff is shut down
+	STA	IRQVECTOR	
+	LDA	#<IGNORE
+	STA	NMIVECTOR+1
+	STA	RESETVECTOR+1
+	STA	IRQVECTOR+1
+
+	LDA	#%00100101	; want IO and no KERNAL or BASIC
+	STA	R6510
+	LDA	#%10010100	; BANK 3 &C000 TO &FFFF
+	STA	BANK
+	LDA	#%11011110	; CHARACTER AND SCREEN SPRERS
+	STA	VICMCR
+
+	LDA	#BL_SPR	; blank sprites in pannel bank
+	STA	PANSPR
+	STA	PANSPR+1
+	STA	PANSPR+2
+	STA	PANSPR+3
+	STA	PANSPR+4
+	STA	PANSPR+5
+	STA	PANSPR+6
+	STA	PANSPR+7
+	LDA	#0
+	STA	VICCR1	; blank screen
+	STA	BORDER
+	STA	COLOUR0	; allways 0
+	STA	ENABLE	; no sprites on screen
+	STA	EXPANDY
+	STA	EXPANDX
+	STA	SCREENTEST	; allow first test to follow throuGH
+	STA	SCREENENABLE
+	STA	PRIORITY
+
+	LDA	#%11111111	; all multicolour sprites
+	STA	MULTICOL
+	LDA	#11
+	STA	MULTI0
+	LDA	#1
+	STA	MULTI1
+	STA	CHEATMODE	; byte to poke to HIT when hit (0 when cheating)
+	IF	PDS
+	JSR	PDSSETUP
+	ENDIF
+	JSR	INSERTN	; poke names for high score
+RESTART	JSR	SCREEN_OFF	; restart game
+	JSR	SETTIRQ
+	JSR	INITSFX
+	LDA	#0	; title track
+	JSR	INITMUSIC
+STARTPAGE	JSR	CLS
+	JSR	PLOTNAME	; atomic robokid
+	JSR	CREDITS	; game credits
+	JSR	SCREEN_ON	; now have a look
+	LDX	#250
+WAITTO	JSR	FIFTY	; delay a bit
+CHEATOFF	JSR	CHEAT	; want to cheat in game
+	LDA	FIRE
+	BNE	CONTINUE
+	DEX
+	BNE	WAITTO
+	JSR	SCREEN_OFF	; screen off
+	JSR	SMDEL	; another delay
+	JSR	CLS	; clear screen
+	JSR	PLOTNAME	; robokid again
+	JSR	DISPLAYHIGH	; show high score table
+	JSR	FBTS	; fire button to start
+	JSR	SCREEN_ON	; now lets see it
+	LDX	#250
+WAITTO1	JSR	FIFTY	; small delay
+	LDA	FIRE
+	BNE	CONTINUE
+	DEX
+	BNE	WAITTO1
+	JSR	SCREEN_OFF	; turn off
+	JSR	SMDEL	; another delay
+	JMP	STARTPAGE	; restart sequence
+
+CONTINUE	LDA	#12
+	STA	FADER
+
+WAITEND	LDA	STATUS
+	BNE	WAITEND
+	LDA	#0
+	STA	STATUS	; finish sound track
+	STA	&D418	; needed ?
+	JSR	SCREEN_OFF	; nothing seen
+
+PASTTITLE	JSR	CLS	; cls title & blank sprite place
+	LDA	#ST_LIVES	; to start with
+	STA	LIVES
+	LDA	#0	; no score yet
+	STA	SCORELO
+	STA	SCOREMI
+	STA	SCOREHI
+	STA	FIREPOWER	; 1 for first weapon
+	STA	WEAPONS	; %00001111 for all weapons
+	IF	LEV<>0
+	LDA	#LEV	; test
+	ENDIF
+	STA	LEVEL
+NEWLEVEL	JSR	SETNOIRQ	; all off
+	JSR	LOAD_IN	; Load in all required parts
+	JSR	SETLEVBITS	; colours for screen
+	JSR	SETIRQ	; main games irq
+
+	; Restart from life lost in monster and battle modes
+RESTART_2	JSR	SETSPRITES	; cler out sprites
+
+	JSR	INITSFX
+	JSR	MUSIC_ON
+	JSR	MUSIC_OFF	; test
+
+	LDA	#255	; flames off
+	STA	ONOFF
+	LDA	#0
+	STA	TINX	; tile in X
+	STA	TINY	; tile in Y
+	STA	DIR	; faceing right to start with
+	STA	CANFIRE	; fire straight away
+	STA	REACHED_END		
+	LDX	#MAX_SPRITES-1
+CLWE	STA	WEAPON_USE,X	; all weapons sprites available
+	DEX
+	BPL	CLWE
+	STA	XOFFSET	; use as 0
+	LDA	YSTART
+	STA	YOFFSET
+	LDA	#6
+	STA	YSCROLL	; top of first character
+	STA	XSCROLL
+	IF	DISK_LOAD ! TAPE_LOAD
+	ELSE
+	LDA	LEVEL_DATA	; Put back for tape version
+	STA	LEVEL_BYTE	; As disk loader need to know if monster level
+	ENDIF
+	LDA	LEVEL_BYTE
+	BNE	PLAY_GAME
+	JSR	ALLSCREEN
+	JSR	SCREEN_ON
+	JSR	END_SEQUENCE
+	JMP	NO_LIVES	; in high score then do required
+
+PLAY_GAME	LDA	#%00000110	; monster or battle
+	BIT	LEVEL_BYTE
+	BEQ	MEGA	; nope scroller
+	LDA	#&50	; start at left a bit
+	NOW
+MEGA	LDA	#XMAP_STOP	; middle of screen for map
+	STA	ROBO_XL
+	LDA	#0
+	STA	PIXEL_XL	; screen x starts allways 0
+	STA	PIXEL_XH	; and high
+	STA	ROBO_XH	; robo map offset cord
+	STA	PIXEL_YH	; y map high
+	LDA	YOFFSET	; YOFFSET * 16
+	ASL	A
+	ROL	PIXEL_YH	; * 2
+	ASL	A
+	ROL	PIXEL_YH	; * 4
+	ASL	A
+	ROL	PIXEL_YH	; * 8
+	ASL	A
+	ROL	PIXEL_YH	; * 16
+	STA	PIXEL_YL
+	LDA	PIXEL_YH
+	ADC	#0
+	STA	PIXEL_YH
+
+	LDA	PIXEL_YL	; top of screen
+	CLC
+	ADC	#YMAP_STOP	; offset to middle
+	STA	ROBO_YL
+	LDA	PIXEL_YH
+	ADC	#0
+	STA	ROBO_YH
+
+	JSR	ALLSCREEN	; first plot of game screen
+	JSR	PANNELSETUP	; plot pannel to screen
+
+	; restart from loss a life in scrolling ACT's
+RE_FR_LI	LDA	#255	; all weapons
+	STA	PLOT1+1	; plotted need up dateing
+	STA	PLOT2+1	; for new life
+	STA	PLOT3+1	; as check is made so no repeat
+	STA	PLOT4+1	; replotting is done
+	JSR	PPANEL	; plot pannel score values
+	JSR	PLOT_WEAPONS; plot weapons if changed
+
+	JSR	JOYGET
+	JSR	SCREEN_ON	; show me now
+	LDA	#%00000010
+	BIT	LEVEL_BYTE
+	BNE	MONSTERACT
+	JSR	PLOTACT	; act number to sprite pointers
+	JMP	OTHER_LEVS
+MONSTERACT	JSR	PRESET_SCAN	; all presets on screen firstly
+OTHER_LEVS	LDA	#FLY_ACT	; 0
+	STA	ACTION	; robo doing what
+	STA	SYNC	; can take out
+	STA	FRAME	; first frame for both flames
+	STA	FRAME+1
+	STA	HIT	; alive
+	LDA	#255
+	STA	ONOFF+0	; both flames on
+	STA	ONOFF+1
+
+	LDA	#120
+	STA	AMOUNT+0	; times for first frame (side)
+	LDA	#50
+	STA	AMOUNT+1	; time for second frame (bottom)
+	LDA	#1
+	STA	SPEED+0	; both speed set to next
+	STA	SPEED+1	; frame
+	STA	FIREDELAY	; fire weapon imedately
+
+	JSR	SCREEN_ON
+
+LITTLEDL	JSR	ANIMATEROBO	; plot up robo kid
+	JSR	INTSFX	; sound effects
+	JSR	INTMUSIC	; must be called as well
+	JSR	FIFTY	; one frame wait (dodgey)
+	JSR	JOYGET
+	LDA	FIRE	; any move ment
+	ORA	MOVE
+	BEQ	LITTLEDL
+	LDA	PAUSE	; no pause when to start level
+	BNE	LITTLEDL
+	LDA	#0	; take act sprites off
+	STA	PIPE_BYTE	; one pipe at a time (free)
+	STA	SPRITE_USE+0
+	STA	SPRITE_USE+1
+	STA	SPRITE_USE+2
+	STA	SPRITE_USE+3
+	LDA	#1	; when scan sides for enemy
+	STA	ENEMY_COME	; enemy on quickly
+ALIVE	JSR	JOYGET	; scan joystick and keyboard
+	LDA	PAUSE
+	BNE	EF_OFF
+	JSR	MOVE_ROBO		; move robokid about & animate
+	JSR	UPDATE_WEAPONS	; plot weapons sprites move them
+	JSR	ENEMY_UPDATE	; enemy routines
+	JSR	BULLET_UPDATE	; update bullets
+
+	JSR	FIRE_WEAPONS	; fire a weapon
+	JSR	PRESET_SCAN		; try put preset sprite first
+	JSR	ENEMY_SCAN		; new enemy to come on
+	JSR	NEW_WEAPON		; select new weapons (if able)
+	JSR	SOUND_MUSIC		; select what on and off
+EF_OFF	JSR	INTSFX		; sound effects
+	JSR	INTMUSIC		; must be called as well
+	JSR	PPANEL		; pannel values score etc
+
+	JSR	PLOT_WEAPONS	; pannel weapons
+	JSR	UNDERKID		; look under robo
+	JSR	FIFTY		; frame wait
+	LDA	HIT
+	BNE	HITOLDBOY		; being killed
+	LDA	REACHED_END		; reached end of level
+	BEQ	ALIVE
+	CMP	#3		; 3 default exit tile
+	BEQ	LAST_EXIT		; 2 is other exit
+	LDA	LEVEL_NEW2		; second exit be a diff level
+	BNE	STLEV
+LAST_EXIT	LDA	LEVEL_NEW1		; new level
+STLEV	STA	LEVEL
+	LDA	#0
+	STA	STATUS		; finish sound track
+	STA	&D418		; needed ?
+	LDA	#2		; monster level
+	BIT	LEVEL_BYTE		; TEST
+	BEQ	SCROLLER
+	INC	LIVES		; one extra after kill big monster
+SCROLLER	JSR	FADEOUT_CHAR	; fade out character set
+	JSR	SCREEN_OFF
+	JMP	NEWLEVEL		; test restart
+
+HITOLDBOY	LDA	#0
+	STA	ONOFF	; flame top off
+	STA	ONOFF+1	; flame bottom off
+	STA	FXCHAN1
+	STA	WSPEED	; do bomb explosion
+	STA	WCOUNT
+	STA	BULLET_TYPE+BU_START
+	STA	BULLET_TYPE+BU_START+1
+	STA	BULLET_TYPE+BU_START+2
+	STA	BULLET_TYPE+BU_START+3
+	LDX	#EN_START
+WIPE_BA	LDA	#0
+	STA	ENEMY_TYPE,X	; wipe out all enemy
+	LDA	ENEMY_MAPH,X	; high byte look at first
+	BEQ	NOEN_MAPM	; will never be used is valid
+	STA	SCAN_MAP+1	; else point to it
+	LDA	ENEMY_MAPL,X	; last map position low
+	STA	SCAN_MAP
+	LDY	#0
+	LDA	(SCAN_MAP),Y	; get byte
+	AND	#%01111111	; mask ignore
+	STA	(SCAN_MAP),Y	; save back
+NOEN_MAPM	INX		; and enemy bullets off screen
+	CPX	#EN_START+MAX_EN
+	BCC	WIPE_BA
+	LDX	#0
+PRESET_REINIT	LDA	ON_OFF,X	; preset table
+	BEQ	END_OFL	; last entry
+	CMP	#255
+	BEQ	KILLED	; preset been and gone so leave
+	AND	#%01111111	; as off as been used on screen
+	STA	ON_OFF,X	; so can reinit it.
+KILLED	INX
+	BNE	PRESET_REINIT
+END_OFL
+	LDA	ROBO_XL
+	STA	WEAPON_XL	; use cord of robo for die
+	LDA	ROBO_XH
+	STA	WEAPON_XH
+	LDA	ROBO_YL
+	STA	WEAPON_YL
+	LDA	ROBO_YH
+	STA	WEAPON_YH
+	LDA	#0
+	STA	WSPEED
+	JSR	SETBOMBUP	; & explos sound
+	LDA	#3	; make weapons as bomb
+	STA	CANFIRE	; explosion on robos position
+	LDA	#BL	; blank sprite for robo
+	STA	ROBO_SPR	; so dont see it
+ALL_BITS_OFF	JSR	UPDATE_WEAPONS	; plot weapons sprites move them
+	JSR	INTSFX	; sound effects
+	JSR	INTMUSIC	; must be called as well
+	JSR	FIFTY	; one frame
+	JSR	INTSFX	; sound effects
+	JSR	INTMUSIC	; must be called as well
+	JSR	FIFTY	; one frame
+
+	LDA	CANFIRE	; bomb all finished
+	BNE	ALL_BITS_OFF; do some more
+
+	LDA	LIVES
+	SEC
+	SBC	#1
+	BEQ	NO_LIVES
+	STA	LIVES
+	LDA	#%00000100	; no loose when hit 
+	BIT	LEVEL_BYTE	; if playing battle mode
+	BNE	INBTM
+	JSR	LOOSEWEAPON	; loose special weapon if any
+INBTM	LDA	#255	; all weapons
+	STA	PLOT1+1	; plotted need up dateing
+	STA	PLOT2+1	; for new redraw of newley
+	STA	PLOT3+1	; got weapon
+	STA	PLOT4+1
+	LDA	#0	; alive a kicking robo
+	STA	HIT
+	JSR	SMDEL	; small wait when blown off
+	LDA	#%00000110	; where to go back to after life lost
+	BIT	LEVEL_BYTE
+	BEQ	SCRLER
+	JMP	RESTART_2	; complete level restart
+SCRLER	JMP	RE_FR_LI	; use xoff & yoff no cord change
+
+NO_LIVES	LDA	#0
+	STA	STATUS	; finish sound track
+	STA	&D418	; needed ?
+
+	JSR	CHECKPLAYER	; in high score table
+	BCS	LUCKY_BOY
+	JMP	RESTART	; to title sequence
+
+LUCKY_BOY	STY	MIKE2	; save index to name
+	JSR	SCREEN_OFF	; restart game
+	JSR	SETTIRQ
+	JSR	INITSFX
+	LDA	#0	; title track
+	JSR	INITMUSIC
+	JSR	CLS
+	JSR	PLOTNAME	; atomic robokid
+	JSR	INSERTN	; poke names for high score
+	JSR	DISPLAYHIGH	; show high score table
+	JSR	NAMEINHI	; print text 'enter name'
+	JSR	SCREEN_ON	; now lets see it
+	
+	LDY	#HOWMANY-1	; places to check
+FINDSCRP	LDA	OFFSET,Y	; find where place for name
+	CMP	MIKE2	; will be printer on screen
+	BEQ	FOUND
+	DEY
+	BPL	FINDSCRP
+FOUND	TYA		; y as position down screen
+	CLC
+	ADC	#2	; colours start from 2
+	STA	SCRCB+1
+	ASL	A
+	ADC	#13-4	; start down screen +1 above
+	TAY
+	LDA	CMAPL,Y	; low of screen memory
+	ADC	#28	; c=0 allways
+	STA	SCREEN	; screen memory
+	STA	COLOUR	; colour nybble
+	LDA	CMAPH,Y	; high byte table
+	ADC	#0
+	STA	SCREEN+1
+	ADC	#<(NYBBLE-PSCREEN)	; get nybble memory
+	STA	COLOUR+1	
+	LDX	MIKE2	; name index
+	LDY	#0	; letter 0 to start with
+	LDA	#10	; count speed
+	STA	SPEED	; store to temp
+NAMELOOP	JSR	UPDATE	; plot all
+	DEC	SPEED
+	BNE	NAMELOOP
+	LDA	#10
+	STA	SPEED
+	CPY	#1
+	BEQ	SECL
+	CPY	#2
+	BEQ	LASTL
+	LDA	NAMEL1,X
+	JSR	NEW_NAME
+	STA	NAMEL1,X
+	JMP	CARRYON
+
+SECL	LDA	NAMEL2,X
+	JSR	NEW_NAME
+	STA	NAMEL2,X
+	JMP	CARRYON
+
+LASTL	LDA	NAMEL3,X
+	JSR	NEW_NAME
+	STA	NAMEL3,X
+
+CARRYON	SEC
+	SBC	#65-11
+	STA	(SCREEN),Y
+SCRCB	LDA	#255	; proper colour for text at line
+	STA	(COLOUR),Y
+	LDA	FIRE
+	BEQ	NAMELOOP
+	INY
+	CPY	#3
+	BCC	NAMELOOP
+THURSDAY	LDA	FIRE	; let go of fire buttom
+	BNE	THURSDAY
+	JSR	SCREEN_OFF
+	JSR	INSERTN	; poke names for high score
+	JMP	STARTPAGE	; restart sequence
+
+NEW_NAME	CLC
+	ADC	RIGHT
+	CMP	#&5C
+	BCC	NOW1
+	LDA	#&41
+NOW1	SEC
+	SBC	LEFT
+	CMP	#&41
+	BCS	NOW2
+	LDA	#&5B
+NOW2	RTS
+
+UPDATE	LDA	(COLOUR),Y
+	CLC
+	ADC	#1
+	AND	#7
+	STA	(COLOUR),Y
+	JMP	FIFTY
+
+FADEOUT_CHAR	LDX	#0
+	LDA	#8
+	STA	MIKE2
+FADELOOP	LDA	#<CHARSET
+	STA	MIKE1+1
+	LDA	#>CHARSET
+	STA	MIKE1
+	LDX	#&FF	; chars to do
+DOLOOP	LDY	#7
+DLOP	LDA	(MIKE1),Y
+	LSR	A
+	STA	(MIKE1),Y
+	DEY
+	LDA	(MIKE1),Y
+	ASL	A
+	STA	(MIKE1),Y
+	DEY
+	BPL	DLOP	; all 8 in char square
+	LDA	MIKE1
+	CLC
+	ADC	#8
+	STA	MIKE1
+	BCC	PL
+	INC	MIKE1+1
+PL	DEX
+	BNE	DOLOOP
+	JSR	FIFTY
+	JSR	FIFTY
+	JSR	FIFTY
+
+	DEC	MIKE2
+	BPL	FADELOOP
+	RTS
+
+	; wait for vertical sync
+FIFTY	LDA	SYNC	; current meanless value
+WAIT	CMP	SYNC	; when changed
+	BEQ	WAIT	; must be a fly back
+	RTS
+
+SMDEL	LDX	#20
+ASEC	JSR	FIFTY
+	DEX
+	BNE	ASEC
+	RTS
+
+CHEAT	LDA	#255
+	STA	CIA1+2
+	LDA	#&FB
+	STA	CIA1+0
+	LDA	CIA1+1
+	CMP	#&DF	; F
+	BNE	WRONG_KEY
+	LDA	#&EF
+	STA	CIA1+0
+	LDA	CIA1+1
+	CMP	#&BF	; O
+	BNE	WRONG_KEY
+	LDA	#&F7
+	STA	CIA1+0
+	LDA	CIA1+1
+	CMP	#&FD	; Y
+	BNE	WRONG_KEY
+	LDA	#&2C	; no cheat check again
+	STA	CHEATOFF
+	LDA	#0	; now unable to be killed
+	STA	CHEATMODE
+	JSR	FIFTY
+	INC	BORDER
+	JSR	FIFTY	; one frame to show cheat is here
+	DEC	BORDER
+WRONG_KEY	RTS
+
+SOUND_MUSIC	LDA	#255	; scan keyboard
+	STA	CIA1+2
+	LDA	#&FE
+	STA	CIA1+0
+	LDA	CIA1+1
+	CMP	#&DF
+	BEQ	MUSIC_OFF
+	CMP	#&EF
+	BEQ	MUSIC_ON
+	CMP	#&F7
+	BEQ	SFX_OFF
+	CMP	#&BF
+	BNE	NOKT
+	LDA	#&20	; back to JSR
+	NOW
+SFX_OFF	LDA	#&2C	; bit the SFXINT
+	STA	EF_OFF
+NOKT	RTS
+
+	; turn music off
+MUSIC_OFF	LDA	#255
+	STA	&C96
+	STA	&C97
+	STA	&C98
+	LDA	#0
+	STA	STATUS	; knock out sound efx
+	STA	VOLUME
+	JMP	INITSFX
+
+MUSIC_ON	LDA	#%00000010	; big monster
+	BIT	LEVEL_BYTE
+	BEQ	SCRNL
+	LDA	#2	; monster
+	NOW
+SCRNL	LDA	#3	; act music
+	JMP	INITMUSIC
+
+	; plot act number
+PLOTACT	LDA	PIXEL_YL
+	CLC
+	ADC	#100
+	STA	WEAPON_YL+0
+	STA	WEAPON_YL+1
+	STA	WEAPON_YL+2
+	STA	WEAPON_YL+3
+	LDA	PIXEL_YH
+	ADC	#0
+	STA	WEAPON_YH+0
+	STA	WEAPON_YH+1
+	STA	WEAPON_YH+2
+	STA	WEAPON_YH+3
+	LDA	PIXEL_XL
+	CLC
+	ADC	#120
+	STA	WEAPON_XL+0
+	ADC	#24
+	STA	WEAPON_XL+1
+	ADC	#24
+	STA	WEAPON_XL+2
+	ADC	#24
+	STA	SPRITE_XL+3
+	STA	SPRITE_USE+0	; can be seen by multiplexor
+	STA	SPRITE_USE+1
+	STA	SPRITE_USE+2
+	STA	SPRITE_USE+3
+	LDA	#0
+	STA	SPRITE_XH+0
+	STA	SPRITE_XH+1
+	STA	SPRITE_XH+2
+	STA	SPRITE_XH+3
+	LDA	#TEXT_P+0
+	STA	SPRITE_SPR
+	LDA	#TEXT_P+1
+	STA	SPRITE_SPR+1
+	LDA	#TEXT_P+2
+	STA	SPRITE_SPR+2
+	LDA	#TEXT_P+3
+	STA	SPRITE_SPR+3
+	LDA	#21	; 'A'
+	LDY	#0
+	JSR	PLTILE
+	LDA	#23	; 'C'
+	LDY	#2
+	JSR	PLTILE
+	LDA	#40	; 'T'
+	LDY	#4
+	JSR	PLTILE
+	LDA	NUMBS_LEFT
+	LDY	#6
+	JSR	PLTILE
+	LDA	NUMBS_RIGHT
+	LDY	#8
+	JMP	PLTILE
+
+END_SEQUENCE	LDA	#&2C	; bit for sprite setup
+	STA	SPRITES	; non multiplexor setup
+	LDA	#0	; stop index
+	STA	ACTION
+	STA	ENABLE	; any on screen turn off
+	LDA	#200	; start with delay before any scroll
+	STA	SPEED	; use as countdown
+ENDLOOP	LDA	SPEED
+	BEQ	SCROL
+	DEC	SPEED
+	BNE	NOMOV
+SCROL	LDX	ACTION
+	LDA	STOPTAB,X	; where to stop
+	CMP	#255
+	BNE	NFINISHED
+	RTS
+NFINISHED	CMP	YOFFSET
+	BNE	CARYON
+	LDA	STOPDEL,X
+	STA	SPEED
+	INX		; next one
+	STX	ACTION
+	LDA	#0	; stop scroll
+	NOW
+CARYON	LDA	#4	; scroll down byte
+	STA	SCROLLACTION	; scroll screen now
+NOMOV	JSR	FIFTY
+	JMP	ENDLOOP	; until end
+
+	; stop for yoffsets
+STOPTAB	DB	13,19,24,29,34,39,44,49,57,255
+	; delay countdown when reached offsets
+STOPDEL	DB	200,120,100,100,100,100,100,100,100,250
+
+*********************************************
+*	setup sprites	*
+*********************************************
+SETSPRITES	LDX	#MAX_SPR-1
+	LDA	#0	
+lop	STA	YCORDS,X
+	STA	XCORDS,X
+	STA	MSBS,X
+	STA	SPR,X	; sprite pointers
+	STA	SCOL,X	; sprite colour
+	DEX
+	BPL	lop
+	LDX	#MAX_SPRITES-1	; enemy & bullets
+WIPE_EN	STA	SPRITE_USE,X	; all free
+	DEX
+	BPL	WIPE_EN
+	LDX	#EN_START		; clear
+WIPE_MP	STA	ENEMY_MAPL,X	; enemy map positions
+	STA	ENEMY_MAPH,X	; so nothing
+	INX			; destroyed when try
+	CPX	#EN_START+MAX_EN	; to recreate enemy bytes
+	BCC	WIPE_MP
+
+	LDA	#MED_GREY	; robo colours
+	STA	ROBO_COL+0
+	LDA	#ORANGE	; flames colours
+	STA	ROBO_COL+1	; side
+	STA	ROBO_COL+2	; and feet
+
+	LDX	#(OFF_BOTTOM_Y/2)	; wipe sorted area clean
+	LDA 	#255
+CL	STA	SORTED,X
+	DEX
+	BPL	CL
+	LDA	#&7F
+	STA	SORTED+(OFF_BOTTOM_Y/2)+1
+	LDA	#&4C	; jump to sprite cord
+	STA	SPRITES
+	RTS
+
+****************************************
+*	atomic robo kid		*
+****************************************
+STX	EQU	3	; start in X
+STY	EQU	0	; start down Y
+PLOTNAME	LDX	#13+STX
+FIRL1	LDY	#STY
+	LDA	MAP-STX,X
+	JSR	PLOTTILE
+	INY
+	LDA	MAP+14-STX,X
+	JSR	PLOTTILE
+	INY
+	LDA	MAP+28-STX,X
+	JSR	PLOTTILE
+	INY
+	LDA	MAP+42-STX,X
+	JSR	PLOTTILE
+	DEX
+	CPX	#STX
+	BCS	FIRL1
+	RTS
+	
+MAP	HEX 00000000152823211D1700000000
+	HEX 0102070201020702000D0F120702
+	HEX 0304080903040809070E10130809
+	HEX 05060A0B0C0B0A0B000511140C0B
+
+	; plot tile at X,Y number A
+PLOTTILE	STY	YTEMP
+	STX	XTEMP
+	STA	TEMP
+	TXA
+	ASL	A	; X * 2
+	ADC	SMAPL,Y	;SDATL,Y	; C=0 after ASL
+	STA	SCREEN
+	STA	COLOUR
+	LDA	SMAPH,Y	;SDATH,Y
+	ADC	#0
+	STA	SCREEN+1
+	CLC
+	ADC	#<(NYBBLE-PSCREEN)	; get to colour memory place
+	STA	COLOUR+1
+	LDX	TEMP
+	LDY	#0
+	LDA	TOPLEFT,X
+	STA	(SCREEN),Y
+	LDA	#9
+	STA	(COLOUR),Y
+	INY
+	LDA	TOPRIGHT,X
+	STA	(SCREEN),Y
+	LDA	#9
+	STA	(COLOUR),Y
+	LDY	#40
+	LDA	BOTLEFT,X
+	STA	(SCREEN),Y
+	LDA	#9
+	STA	(COLOUR),Y
+	INY
+	LDA	BOTRIGHT,X
+	STA	(SCREEN),Y
+	LDA	#9
+	STA	(COLOUR),Y
+	LDX	XTEMP
+	LDY	YTEMP
+	RTS
+
+	; tile data
+TOPLEFT	HEX 0000003F413F000046003F003F004B00
+	HEX 414F00515155595D6164645D6C6D006C
+	HEX 6B74767A647A647D816B6B8587898D91
+	HEX 5D6D9397997D649B9E7DA0A2A4A6A8AA
+	HEX ACAEB0B2B4B6B8BABCBEE0E0E0E0E000
+
+TOPRIGHT	HEX 0000004042003F00003F003F00004C00
+	HEX 4250005252565A5E6265655E6B6F6B72
+	HEX 00756B627862787E826B6B6B888A8E00
+	HEX 626F945A6B7E7E9C5A62A1A3A5A7A9AB
+	HEX ADAFB1B3B5B7B9BBBDBFE1E1E1E1E100
+
+BOTLEFT	HEX 003B3D3F4345003C3F0047484A3F3F00
+	HEX 4D00515153575B5F6366685F686E7168
+	HEX 6368775F687B687F6E5F8386688B8F92
+	HEX 5F6E95989A7F666E667FC0C2C4C6C8CA
+	HEX CCCED0D2D4D6D8DADCDEE2E4E6E8EA00
+
+BOTRIGHT	HEX 003C3E004400453C003F3C493C00003F
+	HEX 4E45525254585C605C67696A58705C73
+	HEX 6058585C797C7380705C8458588C9000
+	HEX 5C70965C5880809D5C80C1C3C5C7C9CB
+	HEX CDCFD1D3D5D7D9DBDDDFE3E5E7E9EB00
+
+
+	; character table for y two chars at a time (title screen)
+	;TABLELO	SMAPL,0,11,80,PSCREEN
+	;TABLEHI	SMAPH,0,11,80,PSCREEN
+	TABLELO	SMAPL,0,5,80,PSCREEN
+	TABLEHI	SMAPH,0,5,80,PSCREEN
+
+	; character table for y one char at time (title screen)
+	TABLELO	CMAPL,0,24,40,PSCREEN
+	TABLEHI	CMAPH,0,24,40,PSCREEN
+
+PLOTTEXT	PLA	; get return address
+	STA	MIKE1	; low byte
+	PLA
+	STA	MIKE1+1	; high byte
+	LDY	#1	; index to first byte
+	LDA	(MIKE1),Y	; colour for text
+	STA	COLBYTE+1
+	INY
+	LDA	(MIKE1),Y	; Y cord
+	TAX
+	LDA	CMAPL,X	; low of screen memory
+	STA	ONSCREEN+1
+	STA	COLSCREEN+1
+	LDA	CMAPH,X	; high byte of screen memory
+	STA	ONSCREEN+2
+	CLC
+	ADC	#<(NYBBLE-PSCREEN)	; get nybble memory
+	STA	COLSCREEN+2	
+	INY
+	LDA	(MIKE1),Y
+	TAX
+POKETOSCREEN	INY
+	LDA	(MIKE1),Y	; get text to convert
+	BMI	ENDT	; last char to poke
+	CMP	#32
+	BEQ	SKIP
+	CMP	#65
+	BCS	LETTRS
+	ADC	#8
+LETTRS	SBC	#65-11	; ascii convert to set
+ONSCREEN	STA	&FFFF,X	; screen memory
+COLBYTE	LDA	#255	; nybble byte
+COLSCREEN	STA	&FFFF,X	; nybble memory
+SKIP	INX		; along screen
+	BNE	POKETOSCREEN	; keep going
+ENDT	TYA
+	SEC
+	ADC	MIKE1	; advance to end of
+	STA	MIKE1	; data to set return
+	BCC	FISH	; address of call
+	INC	MIKE1+1	; high byte over
+FISH	JMP	(MIKE1)	; return back
+
+****************************************
+*	title screen stuff	*
+****************************************
+CREDITS	JSR	PLOTTEXT
+	DB	2,10,16	; Colour, Ycord, Xcord
+	DB	"CODED BY"
+	DB	255
+	JSR	PLOTTEXT
+	DB	7,12,12
+	DB	"MICHAEL J ARCHER"
+	DB	255
+	JSR	PLOTTEXT
+	DB	3,15,9	; colour
+	DB	"GRAPHICS BY MARK JONES"
+	DB	255
+	JSR	PLOTTEXT
+	DB	4,18,9	; colour
+	DB	"MUSIC BY MARTIN WALKER"
+	DB	255
+	JSR	PLOTTEXT
+	DB	6,21,16
+	DB	"Z"+1
+	DB	"1989 UPL"
+	DB	255
+FBTS	JSR	PLOTTEXT	; fire print
+	DB	1,24,7
+	DB	"PRESS FIRE BUTTON TO START"
+	DB	255
+	RTS
+
+NAMEINHI	JSR	PLOTTEXT	; fire print
+	DB	1,24,11
+	DB	"PLEASE  ENTER NAME"
+	DB	255
+	RTS
+

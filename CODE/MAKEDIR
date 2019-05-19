@@ -1,0 +1,716 @@
+
+;	LIST	ON
+
+
+	org	$4000
+cold	jmp	coldRun
+
+
+None	equ	-1
+LEV	EQU	NONE
+		; None = save dir
+ChrDirFlag	equ	$69
+MapDirFlag	equ	$6a
+MusicDirFlag	equ	$6b
+;level	db	0
+; set Lev at None of Dos Save
+
+
+Key	equ	$0
+	Send computer1
+
+	; One byte
+Music.0	Macro
+	db	>$0E49,<$0E49,>$0000,<$0000,>$6c00,(<$6c00)~Key,>$02,Level ; Music
+	EndM
+
+Music.1	Macro
+	db	>$0E49,<$0e49,>$07E2,<$07e2,>$6c00,(<$6c00)~Key,>$02,Level ; Music
+	EndM
+Music.2	Macro
+	db	>$0E49,<$0e49,>$0941,<$0941,>$7400,(<$7400)~Key,>$02,Level ; Music
+	EndM
+Music.3	Macro
+	db	>$0E49,<$0e49,>$06B3,<$06B3,>$7e00,(<$7e00)~Key,>$02,Level ; Music
+	EndM
+Music.7	Macro
+	db	>$0E49,<$0e49,>$087F,<$087F,>$8500,(<$8500)~Key,>$02,Level ; Music
+	EndM
+Music.10	Macro
+	db	>$0E49,<$0e49,>$093A,<$093A,>$8e00,(<$8e00)~Key,>$02,Level ; Music
+	EndM
+
+
+******************
+DEF_LEVEL	MACRO
+	db	>$B500-@1,<$B500-@1,>@1,<@1,>DiskAddrL,(<DiskAddrL)~Key,>DiskAddrH,Level ; Map
+	;db	>DiskAddrH,<DiskAddrL,>DiskAddrL,00,00
+
+DiskAddrL	= DiskAddrL+@1
+	If DiskAddrL < OldL
+DiskAddrH	= DiskAddrH+1
+	EndIf
+OldL	= DiskAddrL
+	@2	; Music
+level	=	Level	+1
+	EndM
+*************************
+Level	= 0
+DiskAddrL	= $E000
+DiskAddrH	= $0
+OldL	= DiskAddrL
+
+
+;	LIST	ON
+
+DirData
+	Def_Level	5699,Music.1		; 0    1
+	Def_Level	4155,Music.2		; 1    2
+	Def_Level	2607,Music.3	 ; 2    3a
+	Def_Level	3618,Music.3		; 3    3b
+	Def_Level	0547,Music.0		; 4    Monster1 (code to &9000)
+	Def_Level	0772,Music.0	 ; 5    4 Battle1
+	Def_Level	8564,Music.1		; 6    5
+	Def_Level	2495,Music.3		; 7    6a
+	Def_Level	4825,Music.3		; 8    6b
+	Def_Level	5489,Music.2		; 9    8
+	Def_Level	0605,Music.0		; 10   Monster2
+	Def_Level	0772,Music.0		; 11   9 Battle2
+	Def_Level	8187,Music.10	; 12   10
+	Def_Level	3025,Music.1		; 13   11a
+	Def_Level	2313,Music.1		; 14   11b
+	Def_Level	0502,Music.0	 ; 15   Monster3
+	Def_Level	0772,Music.0		; 16   13 Battle3
+	Def_Level	6680,Music.7		; 17   14
+	Def_Level	3736,Music.7 	; 18   15a
+	Def_Level	6119,Music.7		; 19   15b
+	Def_Level	2803,Music.7		; 20   16
+	Def_Level	0747,Music.0		; 21   Monster 4
+	Def_Level	0772,Music.0		; 22   17 Battle4
+	Def_Level	5752,Music.10	; 23   18
+	Def_Level	2132,Music.7		; 24   19
+	Def_Level	7853,Music.2		; 25   20
+	Def_Level	1219,Music.0	 ; 26   Monster5
+	Def_Level	1145,Music.0		; 27   End Sequence
+
+;	List	OFF
+
+;	End
+
+
+	ds	$300,0
+
+ColdRun
+	lda	#$7f
+	sta	$d020
+!Loop	dec	$d020
+	inc	$d020
+	cmp	$dc01
+	bne	!loop
+
+	jsr	InitTables
+	inc 	$d020
+	If	lev <> None
+	Jsr	SaveLevel
+	Else
+	jsr	SaveDir
+	EndIF
+!l  	inc	 $d020
+	jmp	!l
+	jmp	$4	; return to pds
+
+InitTables
+
+
+; Make Chr Dir
+	lda	#>$F800
+	sta	LoadAddr
+	lda	#<$F800
+	sta	LoadAddr+1
+	lda	#>2040
+	sta	loadLenth
+	lda	#<2040
+	sta	loadLenth+1
+	lda	#$00
+	sta	DiskAddr
+	sta	DiskAddr+1
+	sta	DiskAddr+2
+
+	ldx	#$0
+!MainLoop	ldy	#$0
+!loop	lda	DataBuffer,Y
+	sta	ChrDir,X
+	inc $d020
+	inx
+	iny
+	cpy	#$08
+	bne	!loop
+	lda	DiskAddr+1
+	clc
+	adc	#$08
+	sta	DiskAddr+1
+	bcc	!NoHigh
+	inc	DiskAddr+2
+!NoHigh	cpx	#28*8
+	bne	!MainLoop
+
+hello
+; Make Map and Music Dir
+	ldx	#$00
+	lda	#>DirData
+	sta	$fc
+	clc
+	adc	#$8
+	sta	$fe  
+	lda	#<DirData
+	sta	$fd
+	adc	#0
+	sta	$ff
+!MainLoop	ldy	#$00
+!loop	lda	($fc),Y
+	sta	MapDir,X
+	lda	($fe),Y
+	sta	MusicDir,X
+	inx
+	iny
+	cpy	#8
+	bne	!loop
+	clc
+	lda	$fc
+	adc	#$10
+	sta	$fc
+	bcc	!noh1
+	inc	$fd
+	clc
+!noh1	lda	$fe
+	adc	#$10
+	sta	$fe
+	bcc	!noh2
+	inc	$ff
+!noh2	cpx	#$0
+	bne	!MainLoop
+	rts	
+
+
+****************************************
+*	
+****************************************
+
+SaveDir
+	lda	#>ChrDir 
+	sta	Start
+	lda	#<ChrDir
+	sta	Start+1
+	lda	#0
+	sta	Len
+	lda	#3
+	sta	Len+1
+	lda	#0
+	sta	Disk
+	lda	#$69
+	sta	Disk+1
+	lda	#2
+	sta	Disk+2
+
+	lda	#$37
+	sta	$01
+	jsr	KDinit
+
+	jsr	KDsave
+	jmp	KDreset
+
+****************************************
+*	
+****************************************
+SaveLevel
+	lda 	#$0
+	sta	$d020
+	lda	#$37
+	sta	$01
+	jsr	KDinit
+
+	SEI
+	inc	$d020
+	lda	#$35
+	sta	$01
+
+	ldx	#lev
+	ldy	#MapDirFlag
+	jsr	ReadDir
+
+	LDA	#&50	; save from &5000
+;	LDA	START+1
+;	SEC
+;	SBC	#$20
+	STA	START+1
+	LDA	#0
+	STA	START+0
+
+	inc	$d020
+	jsr	KDsave	
+	inc	$d020
+
+	lda	#$37
+	sta	$01
+	jmp	KDreset
+
+
+DataBuffer 
+LoadAddr	dw	0
+LoadLenth	DW	0
+DiskAddr	db	0,0,0
+	db	0
+	
+
+ChrDir	ds	$100,0
+MapDir	ds	$100,0
+MusicDir	ds	$100,0
+
+******************************************************************************
+*	
+****************************************
+ReadDir
+; Y = Dir No
+; X = Level
+	txa
+	asl	a
+	asl	a
+	asl	a
+	tax
+	lda	#>Start 
+	sta	Start
+	lda	#<Start
+	sta	Start+1
+	lda	#>7
+	sta	Len
+	lda	#<7
+	sta	Len+1
+	stx	Disk	; entry No
+	sty	Disk+1	; dir No
+	lda	#2
+	sta	Disk+2
+	jmp	KDload
+
+********************************
+* Kdos
+Kdos
+Bank	EQu	$DD00
+KdosInit	EQU	1
+KdosSave	EQU	1
+
+	If	KdosSave=1
+	if	kdosInit=0
+	error	You plonker .... Init must be on when using save
+	endif
+	endif
+
+VAL	EQU	*-$5000
+
+Start	DS	2,0
+Len	DS	2,0
+Disk	DS	3,0
+
+KDinit	JMP VAL+&51EE
+KDvicBank	JMP VAL+&518E
+KDload	JMP VAL+&514F
+KDsave	JMP VAL+&523D
+KDsetID	JMP VAL+&51B7
+KDgetID	JMP VAL+&51D5
+KDwideLoad	JMP VAL+&514C
+KDreset	JMP VAL+&5031
+	BRK
+	AND &2E,X
+	BMI VAL+&4FAC
+	BNE VAL+&5041
+	LDA #3
+	STA BANK
+	LDA #&FF
+	JSR VAL+&5030
+	RTS
+	LDA #5
+	STA VAL+&50A9
+	LDY #&0A
+	LDA VAL+&5027
+	STA BANK
+	JSR VAL+&5030
+	LDA #&28
+	STA VAL+&501F
+	LDA #&1B
+	STA BANK
+	LDX #&CD
+	DEX
+	BNE VAL+&504D
+	LDA BANK
+	BMI VAL+&5023
+	LDA #&0B
+	STA BANK
+	DEX
+	BEQ VAL+&5023
+	LDA BANK
+	BPL VAL+&505A
+	JSR VAL+&5030
+	LDX #8
+	LDA VAL+&5047
+	STA BANK
+	JSR VAL+&502D
+	NOP
+	NOP
+	LDA VAL+&5056
+	LSR VAL+&501F
+	BCS VAL+&507E
+	ORA #&20
+	BCC VAL+&5081
+	AND #&DF
+	NOP
+	STA BANK
+	JSR VAL+&502D
+	JSR VAL+&5030
+	DEX
+	BNE VAL+&5067
+	LDA VAL+&5047
+	STA BANK
+	LDY #&5E
+	DEY
+	BEQ VAL+&5023
+	LDA BANK
+	BMI VAL+&5095
+	JSR VAL+&502D
+	LDA #&13
+	STA BANK
+	STX VAL+&5179
+	LDA #1
+	JSR VAL+&50D0
+	LDY #4
+	LDA VAL+&5002,Y
+	JSR VAL+&50D0
+	DEY
+	BPL VAL+&50AF
+	JSR VAL+&5178
+	BEQ VAL+&50C0
+	JMP VAL+&5036
+	LDY #4
+	LDA VAL+&4FFF,Y
+	STA &00FB,Y
+	DEY
+	BNE VAL+&50C2
+	TYA
+	STA VAL+&5179
+	RTS
+	TAX
+	SEC
+	ROR A
+	STA VAL+&501F
+	LDA VAL+&5027
+	STA BANK
+	LDA BANK
+	BPL VAL+&50DC
+	EOR #&10
+	BCC VAL+&50E9
+	ORA #&20
+	BCS VAL+&50EC
+	AND #&DF
+	NOP
+	LSR VAL+&501F
+	STA BANK
+	BEQ VAL+&50F9
+	BIT &FF
+	JMP VAL+&50E1
+	TXA
+	CLC
+	ADC VAL+&5179
+	STA VAL+&5179
+	LDA VAL+&50A1
+	STA BANK
+	RTS
+	LDX VAL+&5027
+	STX BANK
+	LDX VAL+&50A1
+	LDA BANK
+	BPL VAL+&5111
+	STY VAL+&5139
+	LDY #4
+	STX BANK
+	LSR A
+	LDX VAL+&5027
+	JSR VAL+&5030
+	EOR BANK
+	STX BANK
+	LSR A
+	LDX VAL+&50A1
+	JSR VAL+&5030
+	EOR BANK
+	DEY
+	BNE VAL+&511B
+	LDY #&FF
+	EOR #&A2
+	STA VAL+&5147
+	CLC
+	ADC VAL+&5179
+	STA VAL+&5179
+	LDA #0
+	STX BANK
+	RTS
+	LDA #4
+	DB	&2C
+	LDA	#0
+	JSR VAL+&5033
+	BNE VAL+&518D
+	LDY #0
+	LDA &FF
+	BEQ VAL+&516A
+	JSR VAL+&5108
+	STA (&FC),Y
+	INY
+	BNE VAL+&515C
+	INC &FD
+	DEC &FF
+	BNE VAL+&515C
+	LDA &FE
+	BEQ VAL+&5178
+	JSR VAL+&5108
+	STA (&FC),Y
+	INY
+	DEC &FE
+	BNE VAL+&516E
+	LDA #&E0
+	JSR VAL+&50D0
+	JSR VAL+&5108
+	STA VAL+&5187
+	JSR VAL+&5108
+	CMP #0
+	BEQ VAL+&518C
+	LDA #&10
+	TAX
+	RTS
+	EOR BANK
+	AND #3
+	EOR BANK
+	STA BANK
+	AND #3
+	STA VAL+&5027
+	ORA #&10
+	STA VAL+&50A1
+	ORA #8
+	STA VAL+&5047
+	EOR #&10
+	STA VAL+&5056
+	LSR A
+	EOR VAL+&5027
+	EOR #&A4
+	STA VAL+&513B
+	RTS
+	LDA VAL+&5002
+	PHA
+	LDA VAL+&5003
+	PHA
+	STX VAL+&5002
+	STY VAL+&5003
+	LDA #2
+	JSR VAL+&5033
+	TAX
+	PLA
+	STA VAL+&5003
+	PLA
+	STA VAL+&5002
+	TXA
+	RTS
+	LDA #3
+	JSR VAL+&5033
+	BNE VAL+&51ED
+	JSR VAL+&5108
+	STA VAL+&51EA
+	JSR VAL+&5108
+	TAY
+	JSR VAL+&5178
+	LDX #&FF
+	CMP #0
+	RTS
+
+	IF	KdosInit
+; Kdos Init
+	JSR &FFE7
+	LDX #&12
+	LDA #8
+	JSR &FFB1
+	LDA VAL+&522A,X
+	JSR &FF93
+	JMP VAL+&5204
+	JSR &FFA8
+	DEX
+	LDA VAL+&522A,X
+	BNE VAL+&5201
+	JSR &FFAE
+	DEX
+	BPL VAL+&51F3
+	LDA #&3F
+	STA &DD02
+	LDA BANK
+	AND #3
+	JSR VAL+&5196
+	LDA #&40
+	BIT BANK
+	BNE VAL+&521F
+	BIT BANK
+	BEQ VAL+&5224
+	RTS
+
+	DB	0,"01,81,0,2,E-B",255
+	
+;	BRK
+;	BMI VAL+&525E
+;	BIT &3138
+;	BIT &2C30
+;	DB &32
+;	BIT &2D45
+;	DB &42
+;	DB &FF
+	BRK
+	BMI VAL+&525F
+	DB &F2
+
+	If KdosSave
+; Kdos Save
+	LDA #1
+	JSR VAL+&5033
+	BNE VAL+&5229
+	LDY #0
+	LDA &FF
+	BEQ VAL+&5258
+	LDA (&FC),Y
+	JSR VAL+&50D0
+	INY
+	BNE VAL+&524A
+	INC &FD
+	DEC &FF
+	BNE VAL+&524A
+	LDA &FE
+	BEQ VAL+&5266
+	LDA (&FC),Y
+	JSR VAL+&50D0
+	INY
+	DEC &FE
+	BNE VAL+&525C
+	JMP VAL+&5178
+
+	EndIf
+	EndIF
+CODEEND
+**************************************************************
+	Org	$5000	;7780-$2000
+
+	IF	LEV=0
+	INCBIN	..\PACKED\LEVEL1.PAK
+	ENDIF
+
+	IF	LEV=1
+	INCBIN	..\PACKED\LEVEL2.PAK
+	ENDIF
+
+	IF	LEV=2
+	INCBIN	..\PACKED\LEVEL3A.PAK
+	ENDIF
+
+	IF	LEV=3
+	INCBIN	..\PACKED\LEVEL3B.PAK
+	ENDIF
+
+	IF	LEV=4
+	INCBIN	..\PACKED\MONSTER1.PAK
+	ENDIF
+
+	IF	LEV=5
+	INCBIN	..\PACKED\BATTLE.PAK
+	ENDIF
+
+	IF	LEV=6
+	INCBIN	..\PACKED\LEVEL5.PAK
+	ENDIF
+
+	IF	LEV=7
+	INCBIN	..\PACKED\LEVEL6A.PAK
+	ENDIF
+
+	IF	LEV=8
+	INCBIN	..\PACKED\LEVEL6B.PAK
+	ENDIF
+
+	IF	LEV=9
+	INCBIN	..\PACKED\LEVEL8.PAK
+	ENDIF
+
+	IF	LEV=10
+	INCBIN	..\PACKED\MONSTER2.PAK
+	ENDIF
+
+	IF	LEV=11
+	INCBIN	..\PACKED\BATTLE.PAK
+	ENDIF
+
+	IF	LEV=12
+	INCBIN	..\PACKED\LEVEL10.PAK
+	ENDIF
+
+	IF	LEV=13
+	INCBIN	..\PACKED\LEVEL11A.PAK
+	ENDIF
+
+	IF	LEV=14
+	INCBIN	..\PACKED\LEVEL11B.PAK
+	ENDIF
+
+	IF	LEV=15
+	INCBIN	..\PACKED\MONSTER3.PAK
+	ENDIF
+
+	IF	LEV=16
+	INCBIN	..\PACKED\BATTLE.PAK
+	ENDIF
+
+	IF	LEV=17
+	INCBIN	..\PACKED\LEVEL14.PAK
+	ENDIF
+
+	IF	LEV=18
+	INCBIN	..\PACKED\LEVEL15A.PAK
+	ENDIF
+
+	IF	LEV=19
+	INCBIN	..\PACKED\LEVEL15B.PAK
+	ENDIF
+
+	IF	LEV=20
+	INCBIN	..\PACKED\LEVEL16.PAK
+	ENDIF
+
+	IF	LEV=21
+	INCBIN	..\PACKED\MONSTER4.PAK
+	ENDIF
+
+	IF	LEV=22
+	INCBIN	..\PACKED\BATTLE.PAK
+	ENDIF
+
+	IF	LEV=23
+	INCBIN	..\PACKED\LEVEL18.PAK
+	ENDIF
+
+	IF	LEV=24
+	INCBIN	..\PACKED\LEVEL19.PAK
+	ENDIF
+
+	IF	LEV=25
+	INCBIN	..\PACKED\LEVEL20.PAK
+	ENDIF
+
+	IF	LEV=26
+	INCBIN	..\PACKED\MONSTER5.PAK
+	ENDIF
+
+	IF	LEV=27
+	INCBIN	..\PACKED\ENDSEQ.PAK
+	ENDIF
+
+ZZZ
+	LIST ON
+	END	Cold
+

@@ -1,0 +1,728 @@
+; ATOMIC ROBOKID
+
+LEV		EQU	0	; Act init start with
+PDS		EQU	0	; pds code there
+
+TAPE_LOAD		EQU	1	; Tape loader
+DISK_LOAD		EQU	0	; Disk loader
+
+		IF	TAPE_LOAD & DISK_LOAD
+		ERROR	You PRAT!.........Only one loader at a time.
+		ENDIF
+
+ST_LIVES		EQU	5	; start lives
+SOUND		EQU	0	; no music or sfx
+SSPEED		EQU	2	; scroll speed in pixels
+
+FIRSTRASTER	EQU	246-32-32
+SECONDRASTER	EQU	255
+PANY		EQU	16	; pannel y char position
+	; map stops robokid
+YMAP_STOP	EQU	((120-20)/2)	; map offset y cord in middle
+	; -20 so when map =0 sprite is exactly top of screen -2's in move
+XMAP_STOP	EQU	((304-24)/2)	; map offset x cord in middle
+
+	; 64 sprites on 38 columns 24 rows display
+	; sprite xlength(24) ylength(21) all in pixels
+	; start left = 31  off left  = 7   (31-24)
+	; right side = 311 off right = 335 (311+24)
+	; start top  = 54  off top   = 33  (54-21)
+
+
+MINY_CORD	EQU	54	; robo y top of screen
+MAXY_CORD	EQU	107+54;163	; robo y bottom of screen
+
+START_LEFT_X	EQU	31	; sprite on left side start
+OFF_LEFT_X	EQU	7	; sprites off left sprite window
+OFF_RIGHT_X	EQU	335-256	; sprites off right with msb set
+START_TOP_Y	EQU	54	; sprite on top side start
+OFF_TOP_Y	EQU	33	; sprites off top of screen
+OFF_BOTTOM_Y	EQU	175	; sprites off bottom of screen
+
+SCREEN_XLENGTH	EQU	38*8	; chars* pixels/char
+SCREEN_YLENGTH	EQU	15*8	; (+1 really)
+
+
+	; slow macros
+TABLELO	MACRO		; FOR A= @2 TO @3 ; VALUE = A*@4+@5
+value	= @2
+@1	DO		; Define Lable
+	DL ((value*@4)+@5)	; Low Byte
+value	= value + 1
+	UNTIL value > @3
+	ENDM
+
+TABLEHI	MACRO		; FOR A= @2 TO @3 ; VALUE = A*@45
+value	= @2
+@1	DO		; Define Lable
+	DH ((value*@4)+@5)
+value	= value + 1
+	UNTIL value > @3
+	ENDM
+
+	; create table 0 TO 127 :BYTE= @1*count+MAPSTART low and hi
+TAB	MACRO
+	TABLELO	GMAPL,0,127,@1,MAPSTART	; Y tab mem lo
+	TABLEHI	GMAPH,0,127,@1,MAPSTART	; Y tab mem hi
+	ENDM
+
+NOB	MACRO
+	DB	&24	; BIT xx
+	ENDM
+
+NOW	MACRO
+	DB	&2C	; BIT xx xx
+	ENDM
+
+ZP	MACRO
+@1	EQU	VARS
+VARS	= VARS+@2
+	ENDM
+
+VARS	=	1
+
+	ZP	R6510,1	; I/O PORT
+	ZP	NMISAVEA,1	; Irq & Nmi reg saves
+	ZP	IRQSAVEA,1
+	ZP	IRQSAVEX,1
+	ZP	IRQSAVEY,1
+	ZP	IRQTEMP,1	; never use
+
+	ZP	ANSWERX,2	; temp answer in irq
+	ZP	ANSWERY,2	; working out enemy sprite cords
+
+	; part of scroll system
+	ZP	SCREENENABLE,1	; of total display is turned on
+	ZP	SCREENTEST,1	; when equal to screenenable ok
+	ZP	YSCROLL,1	; smooth scroll Y position
+	ZP	XSCROLL,1	; smooth scroll X position
+	ZP	XOFFSET,1	; X offset into map tile positions
+	ZP	XOFFTEMP,1	; temp for above used in plot down
+	ZP	YOFFSET,1	; Y offset into map tile positions
+	ZP	TINX,1	; offset into tile X position
+	ZP	TINY,1	; offset into tile Y position
+	ZP	SCREEN,2	; plotting of map to screen
+	ZP	COLOUR,2	; nybble temp
+	ZP	MAPMEM,2	; point to map data (for scroll)
+	ZP	PIXEL_XL,1	; pixel position top left of map
+	ZP	PIXEL_XH,1	; xcord lo/hi
+	ZP	PIXEL_YL,1	; y cord lo/hi
+	ZP	PIXEL_YH,1	; hi
+
+	; reading of input devices
+	ZP	MOVE,1	; joystick byte to do what ok
+	ZP	JOY,1	; joystick temp byte never use	
+	ZP	SYNC,1	; 1/50 second counter
+	ZP	LEFT,1	; 0/1 the value of
+	ZP	RIGHT,1	; 0/1 0 or 1 for any
+	ZP	UP,1	; 0/1 movement for
+	ZP	DOWN,1	; 0/1 that direction
+	ZP	FIRE,1	; 0/1 in the joystick
+	ZP	SELECT,1	; 0/1 in weapons select
+	ZP	PAUSE,1	; hold game
+
+	; sprite multiplexor vars
+
+	; amount of space allocated to each type of sprite
+MAX_ROBO	EQU	3	; 1 man robo 2 for flame
+MAX_WEAPS	EQU	5	; Amount for weapon sprites
+MAX_EN	EQU	10	; 10 enemy max
+MAX_BUL	EQU	4	; four bullets for enemy
+
+	; total amount of sprites can be used
+MAX_SPR	EQU	MAX_ROBO+MAX_WEAPS+MAX_EN+MAX_BUL
+
+EN_START	EQU	MAX_WEAPS
+BU_START	EQU	MAX_WEAPS+MAX_EN
+
+	ZP	HOLD,1	; used in multiplexor index save
+	ZP	XCORDS,MAX_SPR	; All sprites X cords
+	ZP	YCORDS,MAX_SPR	; All sprites Y cords
+	ZP 	MSBS,MAX_SPR	; All sprites X cord MSB
+	ZP	SCOL,MAX_SPR	; sprite colours
+	ZP	SPR,MAX_SPR	; actual sprite pointer
+
+	; Robo place
+ROBO_X	EQU	XCORDS	; the main man
+ROBO_Y	EQU	YCORDS
+ROBO_MSB	EQU	MSBS
+ROBO_COL	EQU	SCOL
+ROBO_SPR	EQU	SPR
+
+	; Other sprites place
+SPRITE_X	EQU	XCORDS+MAX_ROBO	; next if start + robo amount
+SPRITE_Y	EQU	YCORDS+MAX_ROBO
+SPRITE_MSB	EQU	MSBS+MAX_ROBO
+SPRITE_COL	EQU	SCOL+MAX_ROBO
+SPRITE_SPR	EQU	SPR+MAX_ROBO
+	; Weapons place
+WEAPON_COL	EQU	SPRITE_COL
+WEAPON_SPR	EQU	SPRITE_SPR
+	; Enemy place
+ENEMY_COL	EQU	SPRITE_COL
+ENEMY_SPR	EQU	SPRITE_SPR
+	; Enemy Bullets
+BULLET_COL	EQU	SPRITE_COL
+BULLET_SPR	EQU	SPRITE_SPR
+
+	; robokids parameters
+	ZP	ACTION,1	; do what to robokid
+	ZP	ROBO_XL,1	; map x position low
+	ZP	ROBO_XH,1	; high byte
+	ZP	ROBO_YL,1	; map y position low
+	ZP	ROBO_YH,1	; high byte
+	ZP	DIR,1	; direction faceing
+	ZP	HIT,1	; been shot or killed
+	ZP	CHEATMODE,1	; 0/1 0 invincible 1 normal game	
+	ZP	HOVER,1	; robo doing nothing 0/255
+	ZP	SLOWDOWN,1	; when been hit by something
+	; flames on side and feet
+	ZP	ONOFF,2	; flame on or off
+	ZP	FRAME,2	; 0 to 3 jet power frame count
+	ZP	SPEED,2	; when to do next
+	ZP	AMOUNT,2	; amount of repeat frames to do
+	; robokids weaponary
+	ZP	FIREPOWER,1	; current selected weapon
+	ZP	WEAPONS,1	; availible weapons
+	ZP	CANFIRE,1	; fire ability (only big weapons)
+	ZP	WCOUNT,1	; single bullets only need 3 bytes
+	ZP	WDIR,3	; copy dir current robo dir
+	ZP	WSPEED,1	; speed factor if ever used
+	ZP	WMOVE,1	; temp save for MOVE joystick byte
+	ZP	FIREDELAY,1	; speed at what can fire bullets
+
+	; status bits of game
+	ZP	LEVEL_BYTE,1	; What level able to do
+	ZP	LEVEL,1	; act number
+	ZP	LIVES,1	; lives left
+	ZP	SCORELO,1	; scores for player
+	ZP	SCOREMI,1
+	ZP	SCOREHI,1
+	ZP	REACHED_END,1	; got to end of map on level
+	ZP	ENEMY_COME,1	; (pardon!) delay to bring new one
+	ZP	SCAN_MAP,2	; last enemy map position
+	ZP	SEED,1	; random seed
+	ZP	EXPANSION,1	; for monsters arms
+	; general temp zero page and subroutine paramaters zero page
+	ZP	COLLIDE_LL,1	; for collision detection
+	ZP	COLLIDE_LH,1	; left high byte
+	ZP	COLLIDE_RL,1	; for collision detection
+	ZP	COLLIDE_RH,1	; left high byte
+
+	ZP	COLLIDE_TL,1	; top low
+	ZP	COLLIDE_TH,1	; top high
+	ZP	COLLIDE_BL,1	; bottom low
+	ZP	COLLIDE_BH,1	; bottom high
+
+	ZP	MIKE1,2
+	ZP	MIKE2,2
+	ZP	XTEMP,1
+	ZP	YTEMP,1
+	ZP	TEMP,1
+
+MAX_SPRITES	EQU	MAX_WEAPS+MAX_EN+MAX_BUL
+
+	ZP	SPRITE_XL,MAX_SPRITES	; all sprite x low cord
+	ZP	SPRITE_XH,MAX_SPRITES	; all sprite y low
+
+STACK	EQU	&100
+
+VIC	EQU	&D000
+X0	EQU	VIC+0
+Y0	EQU	VIC+1
+X1	EQU	VIC+2
+Y1	EQU	VIC+3
+X2	EQU	VIC+4
+Y2	EQU	VIC+5
+X3	EQU	VIC+6
+Y3	EQU	VIC+7
+X4	EQU	VIC+8
+Y4	EQU	VIC+9
+X5	EQU	VIC+10
+Y5	EQU	VIC+11
+X6	EQU	VIC+12
+Y6	EQU	VIC+13
+X7	EQU	VIC+14	
+Y7	EQU	VIC+15
+MSB	EQU	VIC+16
+VICCR1	EQU	VIC+17
+RASTER	EQU	VIC+18
+ENABLE	EQU	VIC+21
+VICCR2	EQU	VIC+22
+EXPANDY	EQU	VIC+23
+VICMCR	EQU	VIC+24
+VICIFR	EQU	VIC+25
+VICIMR	EQU	VIC+26
+PRIORITY	EQU	VIC+27
+MULTICOL	EQU	VIC+28
+EXPANDX	EQU 	VIC+29
+SPSPCOD	EQU	VIC+30
+SPBACD	EQU	VIC+31
+BORDER	EQU	VIC+32
+COLOUR0	EQU	VIC+33
+COLOUR1	EQU	VIC+34
+COLOUR2	EQU	VIC+35
+COLOUR3	EQU	VIC+36
+MULTI0	EQU	VIC+37
+MULTI1	EQU	VIC+38
+SPC0	EQU	VIC+39
+SPC1	EQU	VIC+40
+SPC2	EQU	VIC+41
+SPC3	EQU	VIC+42
+SPC4	EQU	VIC+43
+SPC5	EQU	VIC+44
+SPC6	EQU	VIC+45
+SPC7	EQU	VIC+46
+
+BLACK	EQU	0
+WHITE	EQU	1
+RED	EQU	2
+CYAN	EQU	3
+PURPLE	EQU	4
+GREEN	EQU	5
+BLUE	EQU	6
+YELLOW	EQU	7
+ORANGE	EQU	8
+BROWN	EQU	9
+LT_RED	EQU	10
+DARK_GREY	EQU	11
+MED_GREY	EQU	12
+LT_GREEN	EQU	13
+LT_BLUE	EQU	14
+LT_GREY	EQU	15
+
+SID	EQU	&D400
+VOLUME	EQU	&D418
+NYBBLE	EQU	&D800
+
+CIA1	EQU	&DC00
+TODTSeconds	EQU	&DC09	; use timer in CIA1
+TODSeconds	EQU	&DC0A
+TODMinutes	EQU	&DC0B
+TODHours	EQU	&DC0C
+CIA1ICR	EQU	&DC0D
+CIA1CRA	EQU	&DC0E
+CIA1CRB	EQU	&DC0F
+
+BANK	EQU	&DD00	; VIC Bank Select
+TIMERALow	EQU	&DD04
+TIMERAHigh	EQU	&DD05
+TIMERBLow	EQU	&DD06
+TIMERBHigh	EQU	&DD07
+CIA2ICR	EQU	&DD0D
+CIA2CRA	EQU	&DD0E
+CIA2CRB	EQU	&DD0F
+
+PSCREEN	EQU	&B400	; title page screen
+TCHARSET	EQU	&B800	; title page character set
+SCREEN1	EQU	&F400	; game SCREEN1
+CHARSET	EQU	&F800	; game char set
+NMIVECTOR	EQU	&FFFA
+RESETVECTOR	EQU	&FFFC
+IRQVECTOR	EQU	&FFFE
+
+
+PANSPR	EQU	PSCREEN+&3F8	; pannel sprites
+SPRITE0	EQU	SCREEN1+&3F8	; game sprites
+SPRITE1	EQU	SPRITE0+1
+SPRITE2	EQU	SPRITE1+1
+SPRITE3	EQU	SPRITE2+1
+SPRITE4	EQU	SPRITE3+1
+SPRITE5	EQU	SPRITE4+1
+SPRITE6	EQU	SPRITE5+1
+SPRITE7	EQU	SPRITE6+1
+
+BL_SPR	EQU	(&B780-&8000)/64	; blank sprite after pannel
+
+FXCHAN1	EQU	&0400	; channels for efx
+FXCHAN2	EQU	&0407	; channels for efx
+FXCHAN3	EQU	&040E	; channels for efx
+INITSFX	EQU	&0451	; sound fx initialise
+INTSFX	EQU	&0487	; interupt call sfx
+INITMUSIC	EQU	&06E6	; music initialise
+STATUS	EQU	&0743	; faded track finished
+FADER	EQU	&0744	; fade out music
+INTMUSIC	EQU	&0745	; interupt call music
+
+	; text screen for game
+	ORG	TCHARSET	; load in character set
+	INCBIN	..\CHARS\TITLE.CHR
+
+	; main music code
+	ORG	&0200	; start of code
+	INCBIN	..\MUSIC\GMUSIC.DAT	; low down ok
+	; new loc will be &7780 ; gives me 2k (WOW!)
+
+TILEMAP	EQU	&7800-&80
+TILESTART	EQU	&7800
+TILETL	EQU	TILESTART+&000 	; char top left
+TILETR	EQU	TILESTART+&080	; char top right
+TILEBL	EQU	TILESTART+&100	; char bottom left
+TILEBR	EQU	TILESTART+&180	; char bottom right
+TCOLTL	EQU	TILESTART+&200	; col top left
+TCOLTR	EQU	TILESTART+&280	; col top right
+TCOLBL	EQU	TILESTART+&300	; col bot left
+TCOLBR	EQU	TILESTART+&380	; col bot right
+GMAPH	EQU	TILESTART+&400	; memory for next y position
+GMAPL	EQU	TILESTART+&480	; for map high & low
+EMAPH	EQU	TILESTART+&500	; memory for next y position
+EMAPL	EQU	TILESTART+&580	; for enemy table high & low
+MAPSTART	EQU	TILESTART+&600
+
+
+	IF	TAPE_LOAD=0 & DISK_LOAD=0
+
+	; now include act part of music
+	; acts 1 5 11a 11b
+	IF	LEV=0 ! LEV=6 ! LEV=13 ! LEV=14
+	INCBIN	..\MUSIC\ACT1.DAT
+	ENDIF
+	; acts 2 8 20
+	IF	LEV=1 ! LEV=9 ! LEV=25
+	INCBIN	..\MUSIC\ACT2.DAT
+	ENDIF
+	; act 3a 3b 6a 6b
+	IF	LEV=2 ! LEV=3 ! LEV=7 ! LEV=8
+	INCBIN	..\MUSIC\ACT3.DAT
+	ENDIF
+	; act 14 15a 15b 16 19
+	IF	LEV=17 ! LEV=18 ! LEV=19 ! LEV=20 ! LEV=24
+	INCBIN	..\MUSIC\ACT7.DAT
+	ENDIF
+	; act 10 18
+	IF	LEV=12 ! LEV=23
+	INCBIN	..\MUSIC\ACT10.DAT
+	ENDIF
+
+	IF	LEV=4 ! LEV=5 ! LEV=10 ! LEV=11 ! LEV=15 ! LEV=16 ! LEV=21 ! LEV=22 ! LEV=26
+	INCBIN	..\MUSIC\ACT1.DAT
+	ENDIF
+
+	ENDIF
+
+
+PSPRITES	EQU	&C000
+
+	ORG	PSPRITES
+ROBO_R	EQU	(*-&C000)/64	; robo faceing right start pointer
+	INCBIN	..\SPRITES\ROBOKID.SPR
+ROBO_L	EQU	(*-&C000)/64	; robo faceing left start pointer
+	INCBIN	..\SPRITES\ROBOKID.REV
+BBULLET_SPR	EQU	(*-&C000)/64	; single bullet normal fire
+	INCBIN	..\SPRITES\BULLET.SPR
+BIG_SPR	EQU	(*-&C000)/64	; big jobber
+	INCBIN	..\SPRITES\THUNDER.SPR
+THREE_SPR	EQU	(*-&C000)/64	; three way spray
+	INCBIN	..\SPRITES\THREE.SPR
+BOMB_SPR	EQU	(*-&C000)/64	; big bomb
+	INCBIN	..\SPRITES\BOMB.SPR
+EXPLODE_SPR	EQU	(*-&C000)/64	; everything explosion
+	INCBIN	..\SPRITES\EXPLODE.SPR
+FIVE_SPR	EQU	(*-&C000)/64	; five spray
+	INCBIN	..\SPRITES\FIVE.SPR
+
+CLOUD_SPR	EQU	(*-&C000)/64	; first enemy
+	INCBIN	..\SPRITES\CLOUDS.SPR
+SNAIL_LEFT	EQU	(*-&C000)/64	; snail face left
+	INCBIN	..\SPRITES\SNAIL.SPR
+SNAIL_RIGHT	EQU	(*-&C000)/64	; snail face right
+	INCBIN	..\SPRITES\SNAIL.REV
+SNAIL_BUL	EQU	(*-&C000)/64	; one frame snail bullet
+	INCBIN	..\SPRITES\SNAIL.BUL
+FLY_LEFT	EQU	(*-&C000)/64	; leaves gem behind
+	INCBIN	..\SPRITES\FLY.SPR
+FLY_RIGHT	EQU	(*-&C000)/64	; faceing other way as above
+	INCBIN	..\SPRITES\FLY.REV
+GEM_SPR	EQU	(*-&C000)/64	; left gem
+	INCBIN	..\SPRITES\GEM.SPR
+BEE_LEFT	EQU	(*-&C000)/64	; bumble bee face left
+	INCBIN	..\SPRITES\BEE.SPR
+BEE_RIGHT	EQU	(*-&C000)/64	; bumble bee face right
+	INCBIN	..\SPRITES\BEE.REV
+PIPE_SPR	EQU	(*-&C000)/64	; none moveing pipes
+	INCBIN	..\SPRITES\PIPE.SPR
+PIPE_BUL	EQU	(*-&C000)/64	; pipes bullet
+	INCBIN	..\SPRITES\PIPE.BUL
+TURRET_BOT	EQU	(*-&C000)/64	; turret at base
+	INCBIN	..\SPRITES\TURRETS.BOT
+TURRET_TOP	EQU	(*-&C000)/64	; turret celing
+	INCBIN	..\SPRITES\TURRETS.TOP
+POD1_SPR	EQU	(*-&C000)/64	; one frame pod
+	INCBIN	..\SPRITES\POD1.SPR
+POD2_SPR	EQU	(*-&C000)/64	; appears pod
+	INCBIN	..\SPRITES\POD2.SPR
+PODS_BUL	EQU	(*-&C000)/64	; pods bullet
+	INCBIN	..\SPRITES\PODS.BUL
+JUMPER_LEFT	EQU	(*-&C000)/64	; jumper face left
+	INCBIN	..\SPRITES\JUMPER.SPR
+JUMPER_RIGHT	EQU	(*-&C000)/64	; jumper face right
+	INCBIN	..\SPRITES\JUMPER.REV
+GUIDED_BUL	EQU	(*-&C000)/64	; guided missile
+FLAB	INCBIN	..\SPRITES\GUIDED.BUL
+
+MON1_SPR	EQU	(*-&C000)/64
+	INCBIN	..\SPRITES\MONSTER1.SPR
+MON2_SPR	EQU	(*-&C000)/64
+	INCBIN	..\SPRITES\MONSTER2.SPR
+MON3_SPR	EQU	(*-&C000)/64
+	INCBIN	..\SPRITES\MONSTER3.SPR
+MON4_SPR	EQU	(*-&C000)/64
+	INCBIN	..\SPRITES\MONSTER4.SPR
+MON5_SPR	EQU	(*-&C000)/64
+	INCBIN	..\SPRITES\MONSTER5.SPR
+
+BATTLE_SPR	EQU	(*-&C000)/64	; Battle mode enemy
+	INCBIN	..\SPRITES\BATTLE.SPR	; 4 battle mode ones
+
+	;SEND	COMPUTER1
+	;END
+
+	; ACT sprite pointers & blank one
+TEXTSPRS	EQU	&F680	; end part of game scren
+	ORG	TEXTSPRS
+	DS	64*4,0	; clear out
+BLMEM	DS	64,0 ;%10101010	; blank sprite memory
+
+TEXT_P	EQU	(TEXTSPRS-&C000)/64	; text pointers
+BL	EQU	(BLMEM-&C000)/64	; blank pointer
+
+	ORG	&178A ;800	; start of  main code
+	IF	DISK_LOAD ! TAPE_LOAD
+	JMP	$7780
+	ELSE
+	JMP	START_CODE	; start game
+	ENDIF
+SORTED	DS	(OFF_BOTTOM_Y/2)+1,0	; sprite multiplexor (( ycord /2) store)
+
+	ORG	&1800
+
+;SPRITE_XL	DS	MAX_SPRITES,0	; labels for routines
+;SPRITE_XH	DS	MAX_SPRITES,0	; common to
+SPRITE_YL	DS	MAX_SPRITES,0	; robos weapons
+SPRITE_YH	DS	MAX_SPRITES,0	; enemy control
+SPRITE_USE	DS	MAX_SPRITES,0	; and enemy bullets
+
+	; copy of labels above
+WEAPON_XL	EQU	SPRITE_XL	; map x pos for bullets low
+WEAPON_XH	EQU	SPRITE_XH	; as above high
+WEAPON_YL	EQU	SPRITE_YL	; map y pos for bullets low
+WEAPON_YH	EQU	SPRITE_YH	; as above high
+WEAPON_USE	EQU	SPRITE_USE	; bullet in use (ie mappable)
+
+	; enemy parameters as before
+ENEMY_XL	EQU	SPRITE_XL	; pixel x position low
+ENEMY_XH	EQU	SPRITE_XH	; pixel x position high
+ENEMY_YL	EQU	SPRITE_YL	; pixel y position low
+ENEMY_YH	EQU	SPRITE_YH	; pixel y position high
+ENEMY_TYPE	EQU	SPRITE_USE	; enemy type
+	; new locations
+ENEMY_SPEED	DS	MAX_SPRITES,0	; frame move speed
+ENEMY_XDIR		DS	MAX_SPRITES,0	; want to move where in x
+ENEMY_YDIR		DS	MAX_SPRITES,0	; want to move where in y
+ENEMY_COUNT	DS	MAX_SPRITES,0	; index table count
+ENEMY_DAMAGE	DS	MAX_SPRITES,0	; amount to kill it enemy by
+ENEMY_NOHIT	DS	MAX_SPRITES,0	; when hit by weapon count down
+ENEMY_NEXTTYPE	DS	MAX_SPRITES,0	; next type after explode
+ENEMY_FRAME	DS	MAX_SPRITES,0	; animation count
+ENEMY_TIMES	DS	MAX_SPRITES,0	; times to do something
+ENEMY_ACT		DS	MAX_SPRITES,0	; going to do what
+ENEMY_PRESET	DS	MAX_SPRITES,0	; preset index save (could use ACT)
+ENEMY_MAPL		DS	MAX_SPRITES,0	; map memory where set from
+ENEMY_MAPH		DS	MAX_SPRITES,0	; high of above
+ENEMY_SPECIAL	DS	MAX_SPRITES,0	; preset special byte (copy of)
+
+	; Bullet parameters same place as enemy (as index is same for subs)
+BULLET_XL	EQU	SPRITE_XL	; pixel x position low
+BULLET_XH	EQU	SPRITE_XH	; pixel x position high
+BULLET_YL	EQU	SPRITE_YL	; pixel y position low
+BULLET_YH	EQU	SPRITE_YH	; pixel y position high
+BULLET_TYPE	EQU	SPRITE_USE	; what bullet type is
+	; copy of new ones from enemy
+BULLET_SPEED	EQU	ENEMY_SPEED	; how fast to move
+BULLET_XDIR	EQU	ENEMY_XDIR	; direction going 0 to 15 / or add
+BULLET_YDIR	EQU	ENEMY_YDIR	; add to y position line bullet
+BULLET_COUNT	EQU	ENEMY_COUNT	; frame and for line movement
+BULLET_DAMAGE	EQU	ENEMY_DAMAGE	; bullet hit by proball bomb
+BULLET_NOHIT	EQU	ENEMY_NOHIT	; can be killed (well only bomb)
+BULLET_XDIFF	EQU	ENEMY_FRAME	; workings for fix move position
+BULLET_YDIFF	EQU	ENEMY_TIMES	; as above
+BULLET_BASE	EQU	ENEMY_ACT	; line base movement (0 X) (255 Y)
+BULLET_CLOCK	EQU	ENEMY_PRESET	; for guided present bearing
+
+	IF	PDS
+
+FLAGS	EQU	&DD00
+DATA	EQU	&DD01
+IN	EQU	4
+OUT	EQU	8
+
+PDSSETUP	LDA	#&3B
+	STA	&DD02	;Setup flags port.
+	LDA	#0
+	STA	&DD03	;Data port setup for reading.
+POWER	RTS
+
+PDSMONITOR	LDA	FLAGS
+	EOR	!STROBE+1
+	AND	#IN	;Get the command byte.
+	BNE	POWER
+	LDX	DATA	;Leave command byte in X register.
+	LDA	FLAGS
+	AND	#255-IN-OUT
+	ORA	!STROBE+1
+	STA	FLAGS
+	LDA	!STROBE+1
+	EOR	#IN+OUT
+	STA	!STROBE+1
+	CPX	#179
+	BEQ	PDSMONITOR
+!NOT187	CPX	#180
+	BNE	!NOT180
+	JSR	!GETBYT
+	STA	!ADDR+2	;This is the start address.
+	JSR	!GETBYT
+	TAY
+	JSR	!GETBYT
+	STA	!COUNT1+1
+	JSR	!GETBYT
+	STA	!COUNT0+1	;This is the length of code.
+!COUNT0	LDA	#1
+	BNE	!0
+!COUNT1	LDA	#1
+	BEQ	!5	;Decrement counter.
+ 	DEC	!COUNT1+1
+!0	DEC	!COUNT0+1
+	JSR	!GETBYT
+!ADDR	STA	&100,Y	;Get and store byte.
+	INY
+	BNE	!COUNT0
+	INC	!ADDR+2	;Inc position in memory.
+	JMP	!COUNT0
+
+!NOT180	CPX	#182
+	BNE	!5
+	JSR	!GETBYT
+	STA	!SADDR+2	;This is the start address.
+	JSR	!GETBYT
+	TAY
+	JSR	!GETBYT
+	STA	!SCOUNT1+1
+	JSR	!GETBYT
+	STA	!SCOUNT0+1	;This is the length of code.
+!UPLOAD	JSR	!PORTOUT	;Set up ports for output.
+!SCOUNT0	LDA	#1
+	BNE	!1
+!SCOUNT1	LDA	#1
+	BEQ	!OUT	;Decrement counter.
+	DEC	!SCOUNT1+1
+!1	DEC	!SCOUNT0+1
+!SADDR	LDA	&100,Y	;Get and send byte.
+	JSR	!SENDBYT
+	INY
+	BNE	!SCOUNT0
+	INC	!SADDR+2	;Inc position in memory.
+	JMP	!SCOUNT0
+!OUT	JMP	!PORTIN	;Set up ports for input again.
+
+!GETBYT	LDA	FLAGS
+!STROBE	EOR	#8	; to start with
+	AND	#IN
+	BNE	!GETBYT
+	LDX	DATA
+	LDA	FLAGS
+	AND	#255-IN-OUT
+	ORA	!STROBE+1
+	STA	FLAGS
+	LDA	!STROBE+1
+	EOR	#IN+OUT
+	STA	!STROBE+1
+	TXA
+!5	RTS
+
+!SENDBYT	STA	DATA
+	LDA	FLAGS
+	AND	#255-IN-OUT
+	ORA	!STROBE+1
+	STA	FLAGS
+	LDA	!STROBE+1
+	EOR	#IN+OUT
+	STA	!STROBE+1
+!2	LDA	FLAGS
+	EOR	!STROBE+1
+	AND	#IN
+	BEQ	!2
+	RTS
+
+!PORTIN	LDA	#0
+	STA	&DD03	;Data port setup for reading.
+	LDA	FLAGS
+	AND	#255-IN-OUT
+	ORA	!STROBE+1
+	STA	FLAGS
+	LDA	!STROBE+1
+	EOR	#OUT
+	STA	!STROBE+1
+	RTS
+
+!PORTOUT	LDA	FLAGS
+	EOR	!STROBE+1	;Wait till pc ready.
+	AND	#IN
+	BNE	!PORTOUT
+	LDA	#255
+	STA	&DD03	;Data ports
+	LDA	!STROBE+1
+	EOR	#IN	;Toggle strobe line.
+	STA	!STROBE+1
+	RTS
+
+	ENDIF
+
+	; What each level is
+	; lower nybble
+	; 0000 End Sequence
+	; 0001 Scolling Level
+	; 0010 Big Monster
+	; 0100 Battle Mode
+	; 1000 not used (could of been int's)
+	; Enemy scanning for Scrolling levels
+	; 00010000 Scan Bottom
+	; 00100000 Scan Top
+	; 01000000 Scan Right
+	; 10000000 Scan Left
+LEVEL_DATA	EQU	&F800+(&E0*8)	; blank free memory in charset
+
+C1	EQU	LEVEL_DATA+1
+C2	EQU	C1+1		; colours
+C3	EQU	C2+1
+
+YTX	EQU	20	; amount to subtract x
+MOX	EQU	32	; monster levels x
+BMX	EQU	20	; battle mode x
+
+TYX	EQU	8	; amount to subtract y
+MY	EQU	24	; monster levels y
+BM	EQU	12	; battle mode y
+
+TILEX	EQU	C3+1		; tiles x size-off
+TILEY	EQU	TILEX+1		; tiles y size-off
+
+
+BY	EQU	02	; battle mode y offset all same
+YSTART	EQU	TILEY+1		; y offset start
+
+	; 00 blnk; 48  0  ; 49  1
+	; 50  2	; 51  3  ; 52  4	; 53  5
+	; 54  6	; 55  7  ; 56  8	; 57  9
+LEVEL_NEW1	EQU	YSTART+1		; next level number
+LEVEL_NEW2	EQU	LEVEL_NEW1+1	; next level number
+
+NUMBS_LEFT	EQU	LEVEL_NEW2+1	; ACT number plot ascii left one
+NUMBS_RIGHT	EQU	NUMBS_LEFT+1	; ACT number plot ascii right one
+
+ON_OFF	EQU	NUMBS_RIGHT+1
+SPECIAL	EQU	ON_OFF+11		; max amount on on off 10 + end mark
+TMAP_XL	EQU	SPECIAL+10		; Preset data
+TMAP_XH	EQU	TMAP_XL+10		; cords x & y
+TMAP_YL	EQU	TMAP_XH+10		; with special bit
+TMAP_YH	EQU	TMAP_YL+10
+

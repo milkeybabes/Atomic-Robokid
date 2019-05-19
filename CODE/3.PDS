@@ -1,0 +1,1355 @@
+****************************************
+*	player entire control	*
+****************************************
+MOVE_ROBO	LDY	ACTION	; want to do what
+	LDA	TABLO,Y
+	STA	RABS+1
+	LDA	TABHI,Y	; 4/5
+	STA	RABS+2	; 4
+RABS	JMP	&FFFF	; 3
+
+FLY_ACT	EQU	0
+DELAY_ACT	EQU	1
+
+	; player control
+TABLO	DL	FLY_ABOUT	; 00 fly around
+	DL	HITD	; 01 hit delay
+
+TABHI	DH	FLY_ABOUT	; 00 hover
+	DH	HITD	; 02 hit delay
+
+HITD	DEC	SLOWDOWN	; delay factor
+	BNE	JUST_ANIM
+	LDA	#FLY_ACT
+	STA	ACTION	; now fly
+	JMP	FLY_ABOUT
+
+FLY_ABOUT	JSR	MOVEROBOKID	; scroll round
+JUST_ANIM	JMP	ANIMATEROBO
+
+MOVEROBOKID	LDA	#%00000100	; is it battle mode
+	BIT	LEVEL_BYTE
+	BEQ	SCRL	; no scroller or monster
+	JMP	BATTLEMOVE
+SCRL	LDA	SCROLLACTION	; fudge
+	BEQ	BOKID
+	RTS		; no move
+BOKID	LDY	MOVE	; movement from joystick byte
+	STY	WMOVE	; save for atomic bomb
+	LDA	MOVEL,Y	; do what table
+	STA	JABS+1
+	LDA	MOVEH,Y
+	STA	JABS+2
+	LDA	#0	; cancel this move so no repeats
+	STA	MOVE	; after once dont do again
+JABS	JSR	&FFFF
+	BCC	NOKEY
+	STA	SCROLLACTION	; return for nmi control for
+NOKEY	RTS		; screen scroll movement
+
+ERROR	CLC
+	RTS
+
+MOVEL	DL	NOKEY	; 0 no movement pressed
+	DL	MOVEUP	; 1
+	DL	MOVEDOWN	; 2
+	DL	ERROR	; 3
+	DL	MOVELEFT	; 4
+	DL	NORTHWEST	; 5
+	DL	SOUTHWEST	; 6
+	DL	ERROR	; 7
+	DL	MOVERIGHT	; 8
+	DL	NORTHEAST	; 9
+	DL	SOUTHEAST	; 10
+
+MOVEH	DH	ERROR
+	DH	MOVEUP
+	DH	MOVEDOWN
+	DH	ERROR
+	DH	MOVELEFT
+	DH	NORTHWEST
+	DH	SOUTHWEST
+	DH	ERROR
+	DH	MOVERIGHT
+	DH	NORTHEAST
+	DH	SOUTHEAST
+
+
+****************************************
+*	diagonal move 1		*
+****************************************
+	; call to check what moves can be made to screen
+	; calls for SCROLL_LEFT(xscroll-1) and SCROLL_DOWN(yscroll+1)
+NORTHEAST	JSR	MOVERIGHT	; do right move first
+	BCS	!MAKESURE	; I want to move screen
+	JMP	MOVEUP	; if not let Y movement control
+!MAKESURE	JSR	MOVEUP	; all up move checking
+	BCC	ONEWAY1	; only scroll left
+	LDA	XSCROLL	; see if about to go over boundary
+	BNE	LOOKSOK1	; if not then move X then in Y
+	; now if we get here then the X scroll is about to go over
+	; character boundry, so must check for y doing the same
+	LDA	YSCROLL
+	CMP	#6	; if so then cannot handle
+	BEQ	ONEWAY1	; both going over boundry
+	LDA	#6	; else Y then X
+	SEC
+	RTS
+
+LOOKSOK1	LDA	#5	; move in X then move in Y
+	SEC		; letting y have control of block
+	RTS		; copy
+
+ONEWAY1	LDA	#2	; scroll left
+	SEC
+	RTS
+
+****************************************
+*	diagonal move 2		*	
+****************************************
+	; call to check what moves can be made to screen
+	; calls for SCROLL_RIGHT(xscroll+1) and SCROLL_DOWN(yscroll+1)
+NORTHWEST	JSR	MOVELEFT
+	BCS	!MAKESURE
+	JMP	MOVEUP
+!MAKESURE	JSR	MOVEUP	; all up move checking
+	BCC	ONEWAY2	; only scroll left
+	LDA	XSCROLL	; see if about to go over boundary
+	CMP	#6	; if not then move X then in Y
+	BCC	LOOKSOK2
+	; now if we get here then the X scroll is about to go over
+	; character boundry, so must check for y doing the same
+	LDA	YSCROLL
+	CMP	#6	; if so then cannot handle
+	BEQ	ONEWAY2	; both going over boundry
+	LDA	#8	; else Y then X
+	SEC
+	RTS
+
+LOOKSOK2	LDA	#7	; move in X then move in Y
+	SEC		; letting Y have control of block
+	RTS		; copy
+
+ONEWAY2	LDA	#1	; scroll right
+	SEC
+	RTS
+
+****************************************
+*	diagonal move 3		*	
+****************************************
+	; call to check what moves can be made to screen
+	; calls for SCROLL_LEFT(xscroll-1) and SCROLL_UP(yscroll-1)
+SOUTHEAST	JSR	MOVERIGHT
+	BCS	!MAKESURE
+	JMP	MOVEDOWN
+!MAKESURE	JSR	MOVEDOWN
+	BCC	ONEWAY3	; only scroll left
+	LDA	XSCROLL	; see if about to go over boundary
+	BNE	LOOKSOK3	; if not then move X then in Y
+	; now if we get here then the X scroll is about to go over
+	; character boundry, so must check for y doing the same
+	LDA	YSCROLL	; if so then cannot handle
+	BEQ	ONEWAY3	; both going over boundry
+	LDA	#10	; else Y then in X
+	SEC
+	RTS
+
+LOOKSOK3	LDA	#9	; move in X then move in Y
+	SEC		; letting y have control of block
+	RTS		; copy
+
+ONEWAY3	LDA	#2	; scroll left
+	SEC
+	RTS
+
+****************************************
+*	diagonal move 4		*
+****************************************
+	; call to check what moves can be made to screen
+	; calls for SCROLL_RIGHT(xscroll+1) and SCROLL_UP(yscroll-1)
+SOUTHWEST	JSR	MOVELEFT	; same rules as above
+	BCS	!MAKESURE
+	JMP	MOVEDOWN
+!MAKESURE	JSR	MOVEDOWN
+	BCC	ONEWAY4	; only scroll left
+	LDA	XSCROLL	; see if about to go over boundary
+	CMP	#6	; if not then move x then in y
+	BCC	LOOKSOK4
+	; now if we get here then the X scroll is about to go over
+	; character boundry, so must check for y doing the same
+	LDA	YSCROLL	; if so then cannot handle
+	BEQ	ONEWAY4	; both going over boundry
+	LDA	#12	; else
+	SEC
+	RTS
+
+LOOKSOK4	LDA	#11	; move in x then move in Y
+	SEC		; letting y have control of block
+	RTS		; copy
+
+ONEWAY4	LDA	#1	; scroll right
+	SEC
+	RTS
+
+****************************************
+*	move robo left		*
+****************************************
+MOVELEFT	JSR	ONSIDE
+	BNE	CHARB1
+	LDA	ROBO_XL	; robo map
+	SEC		; - screen map gives pixel screen
+	SBC	PIXEL_XL	; length 
+	STA	DATUM+1
+	LDA	ROBO_XH
+	SBC	PIXEL_XH
+	BNE	MIDDLE1	; high set > 256 no scroll
+DATUM	LDA	#255
+	CMP	#XMAP_STOP-8	; stop box at left edge
+	BCS	MIDDLE1	; past the move robo sprite only
+NICK_LESS	LDA	XOFFSET	; when XOFFSET=0
+	ORA	TINX	; and TINX=0
+	BNE	DSCROLL1	; can scroll
+	LDA	XSCROLL	; else at left of screen
+	CMP	#6	; if when scroll = 6
+	BNE	DSCROLL1
+MIDDLE1	LDA	ROBO_XL	; low and high
+	ORA	ROBO_XH
+	BEQ	CHARB1	; at left when = 0 (side of screen)
+	LDA	ROBO_XL	; robo map - 2
+	SEC
+	SBC	#2
+	STA	ROBO_XL
+	BCS	CHARB1
+	DEC	ROBO_XH
+	RTS		; C=0
+
+CHARB1	CLC
+	RTS
+
+DSCROLL1	LDA	#1	; now do a smooth scroll ok
+	SEC
+	RTS
+
+****************************************
+*	move robo right		*
+****************************************
+MOVERIGHT	JSR	ONSIDE
+	BNE	CHARB2
+	LDA	ROBO_XL	; robo map
+	SEC		; - screen map
+	SBC	PIXEL_XL	; if pixel screen offset for robo
+	CMP	#XMAP_STOP+8	; stop box at edge
+	BCC	MIDDLE2	; to small move robo only
+	LDA	XOFFSET
+	CMP	#255	; max x
+MAXX	EQU	*-1
+	BCC	DSCROLL2
+	LDA	TINX	; and TINX=0
+	BEQ	DSCROLL2
+	LDA	XSCROLL	; then right side
+	BNE	DSCROLL2
+MIDDLE2	LDA	ROBO_XL	; get x difference
+	SEC		; between robo map and
+	SBC	PIXEL_XL	; left side map
+	STA	COMP+1	; ie length on screen
+	LDA	ROBO_XH
+	SBC	PIXEL_XH
+	BEQ	MOV_ME	; if 0 can move else must be 1
+COMP	LDA	#255	; result from above
+	CMP	#>SCREEN_XLENGTH-24	; sprite at left edge
+	BEQ	CHARB2
+MOV_ME	LDA	ROBO_XL	; robo map + 2
+	CLC
+	ADC	#2
+	STA	ROBO_XL
+	BCC	ENGL2	; C=0 
+	INC	ROBO_XH
+CHARB2	CLC
+ENGL2	RTS
+
+DSCROLL2	LDA	#2
+	SEC
+	RTS
+
+****************************************
+*	move robo up		*
+****************************************
+MOVEUP	JSR	ONTOPOFHEAD
+	BNE	CHARB3	; no move in that direction
+	LDA	ROBO_YL	; same as for x
+	SEC		; but in y
+	SBC	PIXEL_YL
+	CMP	#YMAP_STOP-8	; below top of stop box
+	BCS	MIDDLE3	; move robo only
+
+	LDA	YOFFSET	; when YOFFSET=0
+	ORA	TINY	; and TINY=0
+	BNE	DSCROLL3
+	LDA	YSCROLL	; then top of screen
+	CMP	#6	; if when scroll = 6
+	BNE	DSCROLL3
+MIDDLE3	LDA	ROBO_YL	; y map at top of screen
+	ORA	ROBO_YH
+	BEQ	CHARB3
+	LDA	ROBO_YL	; robo map - 2
+	SEC
+	SBC	#2
+	STA	ROBO_YL
+	BCS	CHARB3
+	DEC	ROBO_YH
+	RTS
+
+CHARB3	CLC
+	RTS
+
+DSCROLL3	LDA	#3
+	SEC
+	RTS
+
+****************************************
+*	move robo down		*
+****************************************
+MOVEDOWN	JSR	BELOWFEET
+	BNE	CHARB4
+	LDA	ROBO_YL	; as before
+	SEC
+	SBC	PIXEL_YL	; y offset size
+	CMP	#YMAP_STOP+8	; past bottom of stop box
+	BCC	MIDDLE4	; to small move robo only
+
+	LDA	YOFFSET
+	CMP	#255	; max Y
+MAXY	EQU	*-1
+	BCC	DSCROLL4
+	LDA	TINY	; TINY<>0
+	ORA	YSCROLL	; and scroll=0
+	BNE	DSCROLL4
+MIDDLE4	LDA	ROBO_YL
+	SEC
+	SBC	PIXEL_YL
+	CMP	#SCREEN_YLENGTH-22	; just above bottom line
+	BEQ	CHARB4
+	LDA	ROBO_YL	; robo map + 2
+	CLC
+	ADC	#2
+	STA	ROBO_YL
+	BCC	ENGL3
+	INC	ROBO_YH
+CHARB4	CLC
+ENGL3	RTS
+
+DSCROLL4	LDA	#4
+	SEC
+VICTORIA	RTS
+
+	; look under robokid map position to see what tile is there
+UNDERKID	LDA	LEVEL_BYTE	; WHAT IS LEVEL
+	AND	#%00000110	; battle mode or monsters
+	BNE	NOTAPPLIC	; check of block
+	JSR	ONSIDE	; side of robos body
+	CMP	#2	; end graphic
+	BEQ	FRAT	; hit
+	CMP	#3	; other end graphic
+	BEQ	FRAT	; hit
+	JSR	BELOWFEET	; feet touched
+	CMP	#2
+	BEQ	FRAT
+	CMP	#3
+	BEQ	FRAT
+	JSR	ONTOPOFHEAD	; nutted tile
+	CMP	#2
+	BEQ	FRAT
+	CMP	#3
+	BEQ	FRAT
+	LDA	#0	; not hit anything
+FRAT	STA	REACHED_END	; touched status
+	RTS
+
+	; Monster Screen killed when all enemy not in use
+NOTAPPLIC	LDA	ENEMY_TYPE+EN_START
+	ORA	ENEMY_TYPE+EN_START+1
+	ORA	ENEMY_TYPE+EN_START+2
+	ORA	ENEMY_TYPE+EN_START+3
+	ORA	ENEMY_TYPE+EN_START+4
+	ORA	ENEMY_TYPE+EN_START+5
+	ORA	ENEMY_TYPE+EN_START+6
+	ORA	ENEMY_TYPE+EN_START+7
+	ORA	ENEMY_TYPE+EN_START+8
+	BNE	LEFTON
+	LDA	#2	; as if was exit
+	STA	REACHED_END
+LEFTON	RTS
+
+	; look into map for side of robo on screen
+ONSIDE	LDA	#2
+	JSR	GETMEM1
+	BNE	VICTORIA
+	LDA	#21
+GETMEM1	CLC		; add little offset
+	ADC	ROBO_YL	; and divide down for tile place
+	STA	MIKE1	; temp save
+	LDA	ROBO_YH
+	ADC	#0
+	LSR	A
+	ROR	MIKE1	; / 2
+	LSR	A
+	ROR	MIKE1	; / 4
+	LSR	A
+	ROR	MIKE1	; / 8
+	LSR	A
+	ROR	MIKE1	; / 16
+	LDY	MIKE1	; tile offset = map pos / 16
+
+	LDA	ROBO_XH
+	STA	MIKE1
+	LDA	ROBO_XL	; and divide down for tile place
+	BIT	DIR
+	BNE	!STAND	; look at left side
+	CLC
+	ADC	#24	; right side of sprite
+	STA	MIKE1+1
+	LDA	MIKE1
+	ADC	#0
+	STA	MIKE1
+	LDA	MIKE1+1
+!STAND	LSR	MIKE1	; / 2
+	ROR	A
+	LSR	MIKE1	; / 4
+	ROR	A
+	LSR	MIKE1	; / 8
+	ROR	A
+	LSR	MIKE1	; / 16
+	ROR	A
+	CLC
+	ADC	GMAPL,Y	; map memory low
+	STA	!ADDRESS+1
+	LDA	GMAPH,Y	; map memory hi
+	ADC	#0
+	STA	!ADDRESS+2
+!ADDRESS	LDY	&FFFF	; get tile number
+	LDA	TILEMAP,Y	; see what to do for tile
+	BEQ	!FRAT
+	CMP	#2	; end graphic
+	BEQ	!FRAT	; hit
+	CMP	#3	; other end graphic
+!FRAT	RTS
+
+	; look to exact tile position for under feet until touch
+BELOWFEET	LDA	#21+1
+	NOW
+	; tile above robo's head
+ONTOPOFHEAD	LDA	#1
+GETMEM	CLC		; add little offset
+	ADC	ROBO_YL	; and divide down for tile place
+	STA	MIKE1	; temp save
+	LDA	ROBO_YH
+	ADC	#0
+	LSR	A
+	ROR	MIKE1	; / 2
+	LSR	A
+	ROR	MIKE1	; / 4
+	LSR	A
+	ROR	MIKE1	; / 8
+	LSR	A
+	ROR	MIKE1	; / 16
+	LDY	MIKE1	; tile offset = map pos / 16
+
+	LDA	ROBO_XL	; and divide down for tile place
+	CLC
+	ADC	#8	; sprite 3*8 pixels so use middle
+	STA	MIKE1
+	LDA	ROBO_XH
+	ADC	#0
+	LSR	A
+	ROR	MIKE1	; / 2
+	LSR	A
+	ROR	MIKE1	; / 4
+	LSR	A
+	ROR	MIKE1	; / 8
+	LSR	A
+	ROR	MIKE1	; /16
+	LDA	MIKE1
+	CLC
+	ADC	GMAPL,Y	; map memory low
+	STA	!ADDRESS+1
+	LDA	GMAPH,Y	; map memory hi
+	ADC	#0
+	STA	!ADDRESS+2
+!ADDRESS	LDY	&FFFF	; get tile number
+	LDA	TILEMAP,Y	; see what to do for tile
+	BEQ	!FRAT
+	CMP	#2	; end graphic
+	BEQ	!FRAT	; hit
+	CMP	#3	; other end graphic
+!FRAT	RTS
+
+****************************************
+*	animation for robokid	*
+****************************************
+ANIMATEROBO	JSR	GET_DIRECTION	; way faceing
+	; fallow through to flames
+	LDX	#0	; top flames
+	JSR	FLAMES
+	INX		; feet flames
+FLAMES	LDA	ONOFF,X
+	BEQ	TILLON	; not on screen
+	JSR	OFFICE	; no frame update
+TILLON	DEC	AMOUNT,X	; times to do frame (every 50th)
+	BNE	RETB	; more to do
+	LDA	ONOFF,X	; toggle state
+	EOR	#255	; of flame off
+	STA	ONOFF,X
+	JSR	RANDOM	; get another count
+	AND	#&73	; max 2 sec odd
+	STA	AMOUNT,X	; to next time
+RETB	RTS
+
+OFFICE	DEC	SPEED,X	; first speed
+	BNE	OFFICE2
+	LDA	#4
+	STA	SPEED,X
+	LDA	FRAME,X
+	CLC
+	ADC	#1
+	AND	#3
+	STA	FRAME,X
+OFFICE2	LDA	FRAME,X
+	CLC
+	BIT	DIR	; robo facing
+	BPL	FACRI
+	BIT	HOVER
+	BPL	!FLY
+	ADC	FLHT,X	; face left hover
+	STA	ROBO_SPR+1,X
+	RTS
+!FLY	ADC	FLFF,X
+	STA	ROBO_SPR+1,X	; second sprite place
+	RTS
+FACRI	BIT	HOVER
+	BPL	!FLY
+	ADC	FRHT,X	; face left hover
+	STA	ROBO_SPR+1,X
+	RTS
+!FLY	ADC	FRFF,X
+	STA	ROBO_SPR+1,X	; second sprite place
+	RTS
+
+	; start frames for animations for flames
+FLHT	DB	ROBO_L+03,ROBO_L+07
+FLFF	DB	ROBO_L+11,ROBO_L+15
+FRHT	DB	ROBO_R+03,ROBO_R+07
+FRFF	DB	ROBO_R+11,ROBO_R+15
+
+	; work out pointer and direction byte
+GET_DIRECTION	LDA	LEFT
+	ORA	RIGHT
+	BEQ	HOVFL
+
+	LDA	#0	; no hover just flying
+	STA	HOVER
+	LDA	LEFT
+	BEQ	OTHW
+	LDA	#%00000100	; battle mode
+	BIT	LEVEL_BYTE
+	BNE	OTHW	; set frame only
+	LDA	#255	; faceing left
+	STA	DIR
+	LDA	#ROBO_L+2	; fly frame
+	STA	ROBO_SPR+0
+HAIR	RTS
+
+OTHW	LDA	#0	; faceing right
+	STA	DIR
+	LDA	#ROBO_R+2	; fly frame
+	STA	ROBO_SPR+0
+	RTS
+
+	; hover movement
+HOVFL	LDA	#255	; hovering frames
+	STA	HOVER
+	LDA	DIR	; look at direction
+	BEQ	!RIGHT
+	LDA	#%00000100
+	BIT	LEVEL_BYTE
+	BNE	!RIGHT
+	LDA	#ROBO_L+1	; hover left
+	STA	ROBO_SPR+0
+	RTS
+!RIGHT	LDA	#ROBO_R+1	; hover right
+	STA	ROBO_SPR+0
+	RTS
+
+
+****************************************
+*	WEAPONS		*
+****************************************
+FIRE_WEAPONS
+	LDA	CANFIRE	; special weapon there ?
+	BNE	NONEW	; only one special on screen
+
+	LDA	FIRE	; fire buttom pressed
+	BEQ	RESET	; new one right away
+
+	DEC	FIREDELAY	; cannot fire two quickly
+	BNE	NONEW
+	LDA	#%00000100
+	BIT	LEVEL_BYTE
+	BNE	BATTLE_MOD	; in battle mode only single fire
+	LDA	FIREPOWER	; mega weapons selected on screen
+	BNE	SET_LARGE	; pannel weapons selected
+BATTLE_MOD	LDX	#2
+FINDFREE	LDA	WEAPON_USE,X	; in use
+	BEQ	USE1	; standard fire
+	DEX
+	BPL	FINDFREE
+RESET	LDA	#1
+	STA	FIREDELAY
+NONEW	RTS		; all used up
+
+	; standard weapon set up bits
+USE1	LDA	#%00000100
+	BIT	LEVEL_BYTE
+	BEQ	GAME_BAT
+	LDA	#LT_BLUE
+	STA	BULLET_COL,X
+	LDA	#PODS_BUL+1	; l/r pointing
+	STA	ENEMY_SPR,X
+	LDA	#0
+	STA	WDIR,X
+	JMP	GOTPAR
+GAME_BAT	LDA	#ORANGE
+	STA	WEAPON_COL,X	; colour first
+	LDA	DIR
+	STA	WDIR,X	; save
+	BPL	POMPEY
+	LDA	#BBULLET_SPR+1	; currect way round
+	NOW
+POMPEY	LDA	#BBULLET_SPR
+	STA	WEAPON_SPR,X	; sprite is a ?
+GOTPAR	JSR	GET_XCORD
+	LDA	MIKE1	; side of robo (allowed for dir)
+	STA	WEAPON_XL,X	; now map cord
+	LDA	MIKE1+1
+	STA	WEAPON_XH,X	; high map
+	LDA	ROBO_YL	; robos low
+	STA	WEAPON_YL,X	; now display it
+	LDA	ROBO_YH	; robo high
+	STA	WEAPON_YH,X	; to weapon high
+	LDA	#255	; in use now
+	STA	WEAPON_USE,X
+	LDA	#10
+	STA	FIREDELAY	; next one after a delay ok
+	LDA	#&12	; single fire sound
+	STA	FXCHAN2
+SMALL_O	RTS
+
+	; other weapons setup
+SET_LARGE	LDA	WEAPON_USE+0	; only fire collected weapon when
+	ORA	WEAPON_USE+1	; all small bullets have gone
+	ORA	WEAPON_USE+2
+	BNE	SMALL_O
+	LDA	FIREPOWER
+	STA	CANFIRE	; now is weapon to fire
+	CMP	#1
+	BNE	SET_THREE
+	LDA	#ORANGE
+	STA	WEAPON_COL
+	STA	WEAPON_COL+1
+	LDA	DIR	; robos direction
+	STA	WDIR	; no is bulled firection
+	BPL	GOOD
+	LDA	#BIG_SPR+1
+	NOW
+GOOD	LDA	#BIG_SPR
+	STA	WEAPON_SPR
+	JSR	GET_XCORD	; robos cords
+	LDA	MIKE1
+	STA	WEAPON_XL	; sprite map x low
+	LDA	MIKE1+1
+	STA	WEAPON_XH	; sprite map x high
+	LDA	ROBO_YL	; robos y map low
+	CLC
+	ADC	#4	; down from top of head of robo
+	STA	WEAPON_YL	; now display it
+	LDA	ROBO_YH
+	ADC	#0
+	STA	WEAPON_YH	; weapon high
+	LDA	#255
+	STA	WEAPON_USE	; now there	
+	LDA	#10
+	STA	FIREDELAY	; next one after a delay ok
+	LDA	#&13	; large bullet sound
+	STA	FXCHAN2
+	RTS
+
+SET_THREE	CMP	#2
+	BNE	SET_ATOMIC	
+	LDA	#LT_BLUE
+	STA	WEAPON_COL
+	STA	WEAPON_COL+1
+	STA	WEAPON_COL+2
+	LDA	DIR	; robos direction
+	STA	WDIR	; no is bulled firection
+	BPL	LURKO
+	LDA	#THREE_SPR+7
+	NOW
+LURKO	LDA	#THREE_SPR
+	STA	WEAPON_SPR
+	STA	WEAPON_SPR+1
+	STA	WEAPON_SPR+2
+	JSR	GET_XCORD	; robos map cords
+	LDA	MIKE1
+	STA	WEAPON_XL	; as weapons
+	STA	WEAPON_XL+1
+	STA	WEAPON_XL+2
+	LDA	MIKE1+1
+	STA	WEAPON_XH	; high map x
+	STA	WEAPON_XH+1
+	STA	WEAPON_XH+2
+	LDA	ROBO_YL	; robos y map low
+	STA	WEAPON_YL	; now display it
+	LDA	ROBO_YH	; as y high
+	STA	WEAPON_YH
+	LDA	ROBO_YL
+	CLC
+	ADC	#7	; second
+	STA	WEAPON_YL+1
+	LDA	ROBO_YH
+	ADC	#0
+	STA	WEAPON_YH+1
+	LDA	ROBO_YL
+	CLC
+	ADC	#7+7	; third
+	STA	WEAPON_YL+2
+	LDA	ROBO_YH
+	ADC	#0
+	STA	WEAPON_YH+2
+	LDA	#255
+	STA	WEAPON_USE
+	STA	WEAPON_USE+1
+	STA	WEAPON_USE+2
+	LDA	#0
+	STA	WCOUNT	; index count
+	LDA	#10
+	STA	FIREDELAY	; next one after a delay ok
+	LDA	#&14	; three way sound
+	STA	FXCHAN2
+	RTS
+
+FR	EQU	BOMB_SPR
+FRTBL	DB	BL,FR+0,FR+4,BL,FR+6,FR+7,FR+5,BL,FR+2,FR+1,FR+3
+
+SET_ATOMIC	CMP	#3
+	BNE	SET_FIVE
+	LDA	#GREEN
+	STA	WEAPON_COL
+	JSR	ATOMICXY	; robos cords
+	LDA	MIKE1
+	STA	WEAPON_XL	; sprite map x's lo
+	LDA	MIKE1+1
+	STA	WEAPON_XH	; sprite map x's hi
+
+	LDY	WMOVE	; joystick direction byte
+	BNE	SOMEMM
+	LDA	#0	; no y movement
+	STA	YMO+1
+	BIT	DIR	; no joystick movement
+	BMI	MVRI	; so get robo direction
+	LDA	#64	; as base for bomb movement
+	STA	WDIR
+	LDA	#BOMB_SPR+2	; faceing bomb
+	STA	WEAPON_SPR
+	JMP	SETREST
+
+MVRI	LDA	#128
+	STA	WDIR	; now bomb direction
+	LDA	#BOMB_SPR+6	; faceing bomb
+	STA	WEAPON_SPR
+	JMP	SETREST
+
+SOMEMM	LDA	DIRBX,Y	; what for x movement
+	STA	WDIR	; &40 add &80 sub 0 none
+	LDA	DIRYADD,Y	; move factor for y cord
+	STA	YMO+1
+	LDA	FRTBL,Y	; bomb sprites diff directions
+	STA	WEAPON_SPR
+
+SETREST	LDA	#16	; amount of moves
+	STA	WSPEED
+	STA	FIREDELAY	; next one after a delay ok
+	LDA	#0	; in this case used for when
+	STA	WCOUNT	; next explosion is activated
+	LDA	ROBO_YL	; get map y and use for weapon
+	STA	WEAPON_YL
+	LDA	ROBO_YH	; was + 2
+	STA	WEAPON_YH
+	LDA	#255
+	STA	WEAPON_USE	; is on the screen
+	LDA	#&15
+	STA	FXCHAN2
+	RTS
+
+BOMB_SPEED	EQU	4
+ABA	EQU	BOMB_SPEED	; bomb add y
+ABS	EQU	-BOMB_SPEED	; bomb sub y
+	;	0   1   2   3  4  5   6   7 8   9   10
+DIRBX	DB	000,000,000,0,&80,&80,&80,0,&40,&40,&40
+DIRYADD	DB	000,ABS,ABA,0,000,ABS,ABA,0,000,ABS,ABA
+
+	; must be set for five spray
+SET_FIVE	LDA	#ORANGE	; sprite colours
+	STA	WEAPON_COL
+	STA	WEAPON_COL+1
+	STA	WEAPON_COL+2
+	STA	WEAPON_COL+3
+	STA	WEAPON_COL+4
+	LDA	DIR	; robos direction
+	STA	WDIR	; no is bulled firection
+	BPL	TITTER
+	LDA	#FIVE_SPR+1	; going left
+	NOW
+TITTER	LDA	#FIVE_SPR	; going right
+	STA	WEAPON_SPR+0
+	STA	WEAPON_SPR+1
+	STA	WEAPON_SPR+2
+	STA	WEAPON_SPR+3
+	STA	WEAPON_SPR+4
+	JSR	GET_XCORD	; robos cords
+	LDA	MIKE1
+	STA	WEAPON_XL	; sprite x's
+	STA	WEAPON_XL+1
+	STA	WEAPON_XL+2
+	STA	WEAPON_XL+3
+	STA	WEAPON_XL+4
+	LDA	MIKE1+1
+	STA	WEAPON_XH	; msb for x's
+	STA	WEAPON_XH+1
+	STA	WEAPON_XH+2
+	STA	WEAPON_XH+3
+	STA	WEAPON_XH+4
+	LDA	ROBO_YL	; robos y
+	SEC
+	SBC	#6
+	STA	WEAPON_YL	; now display it
+	LDA	ROBO_YH
+	SBC	#0
+	STA	WEAPON_YH
+
+	LDA	ROBO_YL	; robos y
+	STA	WEAPON_YL+1	; now display it
+	LDA	ROBO_YH
+	STA	WEAPON_YH+1
+	LDA	ROBO_YL	; robos y
+	CLC
+	ADC	#6
+	STA	WEAPON_YL+2	; now display it
+	LDA	ROBO_YH
+	ADC	#0
+	STA	WEAPON_YH+2
+	LDA	ROBO_YL	; robos y
+	CLC
+	ADC	#6+6
+	STA	WEAPON_YL+3	; now display it
+	LDA	ROBO_YH
+	ADC	#0
+	STA	WEAPON_YH+3
+	LDA	ROBO_YL	; robos y
+	CLC
+	ADC	#6+6+6
+	STA	WEAPON_YL+4	; now display it
+	LDA	ROBO_YH
+	ADC	#0
+	STA	WEAPON_YH+4
+	LDA	#255
+	STA	WEAPON_USE
+	STA	WEAPON_USE+1
+	STA	WEAPON_USE+2
+	STA	WEAPON_USE+3
+	STA	WEAPON_USE+4
+	LDA	#0
+	STA	WCOUNT	; index count
+	LDA	#10
+	STA	FIREDELAY	; next one after a delay ok
+	LDA	#&16	; five way sound
+	STA	FXCHAN2
+	RTS
+
+	; get sprite position for atomic bomb
+	; use dir and wmove to see where to move from
+ATOMICXY	LDA	WMOVE	; use direction of robo
+	BEQ	GET_XCORD	; if no key press
+	LDA	#%00000100	; left key
+	BIT	WMOVE
+	BNE	FACE_LEFT
+	LDA	#%00001000	; right key
+	BIT	WMOVE	; get last joystick byte
+	BNE	FACE_RIGHT
+
+	; get map x from robo position
+GET_XCORD	BIT	DIR	; get robo faceing direction
+	BMI	FACE_LEFT	; look left side
+FACE_RIGHT	LDA	ROBO_XL	; robo map low
+	CLC
+	ADC	#12 ;24	; right side of robo sprite
+	STA	MIKE1
+	LDA	ROBO_XH	; robo map high
+	ADC	#0
+	STA	MIKE1+1
+	RTS
+
+FACE_LEFT	LDA	ROBO_XL	; map low
+	SEC
+	SBC	#12 ;24	; to his left
+	STA	MIKE1	; x save
+	LDA	ROBO_XH	; map high
+	SBC	#0
+	STA	MIKE1+1	; msb value
+	RTS
+
+****************************************
+*	plot weapon sprites	*
+****************************************
+UPDATE_WEAPONS	LDY	CANFIRE	; weapon in use
+SEEMOK	LDA	WEPTL,Y
+	STA	SMC+1
+	LDA	WEPTH,Y
+	STA	SMC+2
+SMC	JMP	&FFFF
+
+WEPTL	DL	STANDARD
+	DL	LARGE
+	DL	THREE
+	DL	ATOMIC
+	DL	FIVE
+
+WEPTH	DH	STANDARD
+	DH	LARGE
+	DH	THREE
+	DH	ATOMIC
+	DH	FIVE
+
+****************************************
+*	STANDARD BULLET		*
+****************************************
+ST_SPEED	EQU	6	; stand bullet speed
+
+STANDARD	LDX	#2
+ALM	LDA	WEAPON_USE,X	; not there
+	BEQ	STILLON
+	JSR	BULLET_HIT	; hit any enemy firstly
+	BCS	OFFYHS	; one hit /bullet
+	LDA	WDIR,X
+	BPL	ADDP
+	LDA	#-ST_SPEED	; minus
+	NOW
+ADDP	LDA	#ST_SPEED	; added
+	JSR	MOVE_SPRITEX	; move about map
+	JSR	CHECK_SPRITE	; on map screen
+	BCC	STILLON	; i am
+OFFYHS	LDA	#0	; take off screen
+	STA	WEAPON_USE,X	; take from screen
+STILLON	DEX
+	BPL	ALM
+	RTS
+
+****************************************
+*	THUNDER BUSTER		*
+****************************************
+LB_SPEED	EQU	12	; large bullet speed
+
+LARGE	LDA	WEAPON_XL	; last cord of first
+	STA	WEAPON_XL+1	; now new cord of second
+	LDA	WEAPON_XH
+	STA	WEAPON_XH+1
+	LDA	WEAPON_YL	; y as w
+	STA	WEAPON_YL+1
+	LDA	WEAPON_YH
+	STA	WEAPON_YH+1
+	LDA	#BIG_SPR+2
+	STA	WEAPON_SPR
+	STA	WEAPON_SPR+1
+	LDA	WEAPON_USE
+	STA	WEAPON_USE+1
+
+	LDX	#0
+	LDA	WEAPON_USE,X	; take off
+	BEQ	!SEON	; use second one
+	JSR	BULLET_HIT	; wack up enemy
+!SEON	INX
+	LDA	WEAPON_USE,X
+	JSR	BULLET_HIT	; scan before move
+	LDX	#0
+	LDA	WDIR	; way going
+	BPL	MOVE_RIGHT
+	LDA	#-LB_SPEED	; speed of movement
+	NOW
+MOVE_RIGHT	LDA	#LB_SPEED
+	JSR	MOVE_SPRITEX
+	JSR	CHECK_SPRITE
+	BCC	AVA
+	LDA	#0	; take off screen
+	STA	WEAPON_USE
+AVA	LDA	WEAPON_USE
+	ORA	WEAPON_USE+1	; and at 0 then must
+	BNE	STILSCA	; be off the screen
+	STA	CANFIRE	; wepon finished
+STILSCA	RTS
+
+****************************************
+*	THREE BULLET SPRAY	*
+****************************************
+TH_SPEED	EQU	8 ;4	; bullets speed
+THREE	LDX	#2
+TRY_H	LDA	WEAPON_USE,X	; on the screen
+	BEQ	DR
+	JSR	BULLET_HIT	
+DR	DEX
+	BPL	TRY_H
+
+	LDY	WCOUNT	; index
+	LDX	#1	; use second as index
+	LDA	WDIR
+	BPL	FIR_LEFT
+
+	LDA	SPRTR,Y	; set sprite pointers
+	STA	WEAPON_SPR	; top
+	LDA	SPRMR,Y
+	STA	WEAPON_SPR+1	; middle
+	LDA	SPRBR,Y
+	STA	WEAPON_SPR+2	; bottom
+	LDA	SUBM,Y
+	JSR	MOVE_SPRITEX
+	JMP	RES
+
+FIR_LEFT	LDA	SPRT,Y	; set sprite pointers
+	STA	WEAPON_SPR+0	; top
+	LDA	SPRM,Y
+	STA	WEAPON_SPR+1	; middle
+	LDA	SPRB,Y
+	STA	WEAPON_SPR+2	; bottom
+	LDA	ADDM,Y
+	JSR	MOVE_SPRITEX
+
+RES	LDA	WEAPON_XL+1	; 1 as base
+	STA	WEAPON_XL+0
+	STA	WEAPON_XL+2
+	LDA	WEAPON_XH+1
+	STA	WEAPON_XH+0
+	STA	WEAPON_XH+2
+	JSR	CHECK_SPRITE
+	BCC	PAST	; on screen
+LOOS_ALL	LDA	#0	; take off screen
+	STA	WEAPON_USE
+	STA	WEAPON_USE+1
+	STA	WEAPON_USE+2	; all sprites off screen
+	STA	CANFIRE	; no weapon selected
+	RTS
+
+	; now move y cords of bullet
+PAST	LDA	WEAPON_USE	; when y cord at 0
+	BEQ	OFFSCR1A	; must of travelled off screen
+	LDX	#0
+	LDA	TOPYM,Y
+	JSR	MOVE_SPRITEY	; top y
+	JSR	CHECK_SPRITE
+	BCC	OFFSCR1A
+	LDA	#0	; take off screen
+	STA	WEAPON_USE
+OFFSCR1A	LDA	WEAPON_USE+2	; when y cord at 0
+	BEQ	OFFSCR1B	; must of travelled off screen
+	LDX	#2	; third (0 1 2) sprite move
+	LDA	BOTYM,Y
+	JSR	MOVE_SPRITEY
+	JSR	CHECK_SPRITEY	; y place only
+	BCC	OFFSCR1B
+	LDA	#0
+	STA	WEAPON_USE+2
+OFFSCR1B	INY		; next in table
+	CPY	#3	; not over 2
+	BEQ	STAYIT
+	STY	WCOUNT	; keep y at 2 when at 2
+STAYIT	RTS
+
+ADDM	DB	0,0,TH_SPEED	; all x move at same pace
+SUBM	DB	0,0,-TH_SPEED	; moves left minus
+TOPYM	DB	-5,-8,-8	; top bullet sub in y
+BOTYM	DB	5,0,8	; bot bulley add in y
+SPRT	DB	THREE_SPR,THREE_SPR+1,THREE_SPR+2
+SPRM	DB	THREE_SPR,THREE_SPR+3,THREE_SPR+4
+SPRB	DB	THREE_SPR,THREE_SPR+5,THREE_SPR+6
+
+	; three way faceing left
+SPRTR	DB	THREE_SPR+7,THREE_SPR+8,THREE_SPR+6
+SPRMR	DB	THREE_SPR+7,THREE_SPR+9,THREE_SPR+4
+SPRBR	DB	THREE_SPR+7,THREE_SPR+10,THREE_SPR+2
+
+****************************************
+*	ATOMIC BOMB		*
+****************************************
+ATOMIC	LDA	WSPEED	; speed at zero
+	BEQ	BLOW_UP
+	JMP	GRANADE	; amimate explosions
+BLOW_UP	LDX	#4	; 6 sprites for bomb
+EXPLLO	LDY	FRAMES_THERE,X	; get count for sprite
+	BNE	INDEXD	; in use already
+	LDA	ADDTOX,X
+	BMI	ALOALO
+	CLC
+CORDSV1	ADC	#255	; from first
+	STA	WEAPON_XL,X
+CORDSV2	LDA	#255
+	ADC	#0
+	STA	WEAPON_XH,X	; and msb of above
+	JMP	MOVY
+ALOALO	CLC
+CORDSV3	ADC	#255	; from first
+	STA	WEAPON_XL,X
+CORDSV4	LDA	#255
+	SBC	#0
+	STA	WEAPON_XH,X
+
+MOVY	LDA	ADDTOY,X
+	BMI	ECLAIRE
+	CLC
+CORDSV5	ADC	#255	;WEAPON_YL
+	STA	WEAPON_YL,X	; new y
+CORDSV6	LDA	#255	;WEAPON_YH
+	ADC	#0
+	STA	WEAPON_YH,X
+	JMP	NEWS
+ECLAIRE	CLC
+CORDSV7	ADC	#255	;WEAPON_YL
+	STA	WEAPON_YL,X
+CORDSV8	LDA	#255	;WEAPON_YH
+	SBC	#0
+	STA	WEAPON_YH,X
+NEWS	LDA	#ORANGE
+	STA	WEAPON_COL,X	; set colour
+	LDA	#255	; display on screen
+	STA	WEAPON_USE,X
+	LDY	#EXPLODE_SPR-1	; -1
+INDEXD	INY
+	CPY	#EXPLODE_SPR+8	; 8 frames for explosion starts 8 in
+	BNE	THRER
+	LDA	#0	; take off after last frame
+	STA	WEAPON_USE,X
+	DEX
+	BPL	EXPLLO
+	LDA	#0
+	STA	CANFIRE
+	RTS		; exit as all will be off
+	
+THRER	TYA
+	STA	WEAPON_SPR,X	; new frames
+	STA	FRAMES_THERE,X
+	JSR	BULLET_HIT	; kill all with bomb
+	DEX	
+	BPL	EXPLLO	; explosion loop
+	RTS
+
+OFFT	LDA	#0	; take off screen
+	STA	WEAPON_USE
+	STA	CANFIRE	; wepon finished
+	RTS
+
+GRANADE	LDX	#0
+	JSR	BULLET_HIT	; bomb
+	BCC	YMO	; hit something
+	LDA	#0	; straight to explode
+	STA	WSPEED
+	JMP	SETBOMBUP	; now set explosions
+
+YMO	LDA	#255	; smc
+	JSR	MOVE_SPRITEY
+	LDA	WDIR	; way going
+	BEQ	BSTILTON	; no x movement
+	BPL	BMOVE_RIGHT
+	LDA	#-BOMB_SPEED	; left
+	JMP	MOV_MEW
+BMOVE_RIGHT	LDA	#BOMB_SPEED	; right move
+MOV_MEW	JSR	MOVE_SPRITEX
+	JSR	CHECK_SPRITE	; on screen
+	BCS	OFFT
+BSTILTON	DEC	WSPEED
+	LDA	WSPEED
+	BNE	MORL
+SETBOMBUP	STA	FRAMES_THERE
+	STA	FRAMES_THERE+1
+	STA	FRAMES_THERE+2
+	STA	FRAMES_THERE+3
+	STA	FRAMES_THERE+4
+	LDA	#&0B
+	STA	FXCHAN2
+	LDA	WEAPON_XL
+	STA	CORDSV1+1
+	STA	CORDSV3+1
+	LDA	WEAPON_XH
+	STA	CORDSV2+1
+	STA	CORDSV4+1
+	LDA	WEAPON_YL
+	STA	CORDSV5+1
+	STA	CORDSV7+1
+	LDA	WEAPON_YH
+	STA	CORDSV6+1
+	STA	CORDSV8+1
+MORL	RTS
+
+
+	; frame in use & as frame number
+FRAMES_THERE	DB	0,0,0,0,0	; 5 sprites in explosion
+COMEON_COUNT	DB	1,1,1,1,1	; when to come on count for frame
+ADDTOX	DB	-15,21,-4,9,-25
+ADDTOY	DB	-16,9,16,-12,5
+
+****************************************
+*	FIVE BULLET SPRAY		*
+****************************************
+FI_SPEED	EQU	8
+FIVE	LDX	#4
+ALLB	JSR	BULLET_HIT
+	DEX
+	BPL	ALLB
+
+	LDY	WCOUNT	; index
+	; move in x cord bullet
+	LDX	#0
+	LDA	WDIR
+	BPL	FIVR_LEFT
+	LDA	FSUBM,Y	; going leftwards
+	JMP	MIN
+FIVR_LEFT	LDA	FADDM,Y	; add 
+MIN	JSR	MOVE_SPRITEX
+	LDA	WEAPON_XL
+	STA	WEAPON_XL+1	; others same as first
+	STA	WEAPON_XL+2
+	STA	WEAPON_XL+3
+	STA	WEAPON_XL+4
+	LDA	WEAPON_XH
+	STA	WEAPON_XH+1
+	STA	WEAPON_XH+2
+	STA	WEAPON_XH+3
+	STA	WEAPON_XH+4
+	JSR	CHECK_SPRITE
+	BCC	FPAST	; on screen
+ZAPOUT	LDA	#0	; take off screen
+	STA	WEAPON_USE
+	STA	WEAPON_USE+1
+	STA	WEAPON_USE+2
+	STA	WEAPON_USE+3
+	STA	WEAPON_USE+4
+	STA	CANFIRE	; no weapon selected
+	RTS
+
+	; now move y cords of bullet
+FPAST	CPY	#7
+	BCS	MOVON	; still y movement to go
+	CPY	#2
+	BCC	MOVON
+	LDX	#4
+LOTOF	LDA	FVTB,X	; factor for sprite
+	JSR	MOVE_SPRITEY
+	DEX		; all five bullets
+	BPL	LOTOF
+MOVON	INY		; next in table
+	STY	WCOUNT	; keep y at 5 when at 5
+	CPY	#10
+	BCS	ZAPOUT
+FSTAYIT	RTS
+
+FVTB	DB	-2,-1,0,1,2	; y move for sprites
+FADDM	DB	0,2,4,6,8,10,12,12,12,12
+FSUBM	DB	0,-2,-4,-6,-8,-10,-12,-12,-12,-12
+
+****************************************
+*	SELECT A NEW WEAPON	*
+****************************************
+	; FIREPOWER byte ( weapon currently selected )
+	; 0 standard default gun not shown on pannel
+	; 1 large fire burst
+	; 2 three way thin bullets
+	; 3 large atomic bomb
+	; 4 five bullet spray
+	; WEAPONS bits ( weapons available )
+	; 1 large fire burst
+	; 2 three way thin bullets
+	; 4 large atomic bomb
+	; 8 five bullet spray
+NEW_WEAPON	LDA	FIREPOWER	; any weapons on screen
+	BEQ	NOWEAPONS	; none
+	LDA	#%000001000	; in battle mode no select
+	BIT	LEVEL_BYTE
+	BNE	NOWEAPONS	; of weapons
+	LDA	SELECT	; want to select
+	BNE	CANSEL
+	LDA	#0	; reset so can next time
+	STA	CANSEL+1
+NOWEAPONS	RTS
+CANSEL	LDA	#0	; count for a new select
+	BEQ	ABLE
+	DEC	CANSEL+1	; count down if held down
+	RTS		; no selection until zero
+ABLE	LDA	#10	; time out for holding down select
+	STA	CANSEL+1
+
+SELECT_NEXT	LDY	FIREPOWER	; get current weapon
+	LDA	WEAPONS	; current weapon selected (0 none)
+	AND	GOAWAY,Y
+	BEQ	NOWEAPONS	; no other weapons
+
+	LDA	#8	; WILL select a new weapon sound
+	STA	FXCHAN1
+	
+	LDA	NEXTWEP-1,Y
+	AND	WEAPONS
+	BEQ	NEX1
+	LDA	FIRENUMBER-1,Y
+	STA	FIREPOWER
+	RTS
+NEX1	LDA	NEXTWEP,Y
+	AND	WEAPONS
+	BEQ	NEX2
+	LDA	FIRENUMBER,Y
+	STA	FIREPOWER
+	RTS
+NEX2	LDA	NEXTWEP+1,Y
+	AND	WEAPONS
+	BEQ	NEX3
+	LDA	FIRENUMBER+1,Y
+	STA	FIREPOWER
+	RTS
+
+NEX3	;LDA	NEXTWEP+2,Y	; must be last value
+	;AND	WEAPONS
+	;BEQ	NEX4
+	LDA	FIRENUMBER+2,Y	; use last
+	STA	FIREPOWER
+	RTS
+
+NEXTWEP	DB	%00000010	; current 1
+	DB	%00000100	; 2
+	DB	%00001000	; 3
+	DB	%00000001	; 4
+	DB	%00000010
+	DB	%00000100
+
+	; new FIREPOWER value for current value
+FIRENUMBER	DB	2,3,4,1,2,3
+
+GOAWAY	DB	%00000000	; normal fire
+	DB	%11111110	; see other than big lazer
+	DB	%11111101	; three way
+	DB	%11111011	; atomic bomb
+	DB	%11110111	; five spray
+
+****************************************
+*	LOOSE WEAPON when die	*
+****************************************
+LOOSEWEAPON	LDY	FIREPOWER	; available and take out index
+	BEQ	ALSHIT	; already crap weapon
+	LDA	WEAPONS	; avalible
+	AND	GOAWAY,Y	; take it away from player
+	STA	WEAPONS	; if none left then must
+	BNE	SELECT_NEXT
+	STA	FIREPOWER	; 0 = new weapons is standard one
+ALSHIT	RTS
+

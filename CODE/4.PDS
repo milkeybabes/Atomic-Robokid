@@ -1,0 +1,1149 @@
+****************************************
+*	collision detection	*
+****************************************
+	; enemy & bullets hit robo
+
+TBLOF	EQU	BBULLET_SPR	; table start sub
+
+	; this enemy index X hit Mr robo kid
+ENEMY_HIT_ROBO	LDY	ENEMY_SPR,X	; get sprite frame
+	LDA	ENEMY_XL,X	; current map of enemy
+	CLC
+	ADC	EXADD-TBLOF,Y	; sprite pointer offset
+	STA	MIKE1	; left side little add in
+	LDA	ENEMY_XH,X	; enemy x high
+	ADC	#0
+	STA	MIKE1+1	; now have left of enemy
+	LDA	MIKE1
+	CLC
+	ADC	EXLENGTH-TBLOF,Y	; length of enemy x to check
+	STA	MIKE2	; low right
+	LDA	MIKE1+1
+	ADC	#0
+	STA	MIKE2+1	; high right
+	; have now got left and right sides of enemy map position
+
+	JSR	COMPARE_AW	; A>W
+	BCC	OT1	; no A less than C
+	JSR	COMPARE_XA
+	BCS	CHECK_Y	; in range
+QUICK_EXIT	RTS
+
+	; now A>=C so check
+OT1	JSR	COMPARE_BW	; B>C C=1 hit C=0 miss
+	BCC	QUICK_EXIT
+
+CHECK_Y	LDA	ENEMY_YL,X	; current map of enemy
+	CLC
+	ADC	EYADD-TBLOF,Y	; sprite pointer offset
+	STA	MIKE1	; top side little add in
+	LDA	ENEMY_YH,X	; enemy y high
+	ADC	#0
+	STA	MIKE1+1	; now have left of enemy
+RESTP	LDA	MIKE1
+	CLC
+	ADC	EYLENGTH-TBLOF,Y	; length of enemy y to check
+	STA	MIKE2	; low right
+	LDA	MIKE1+1
+	ADC	#0
+	STA	MIKE2+1	; high right
+	; have now got top and bottom of enemy map position
+	; have now got left and right sides of enemy map position
+
+	JSR	COMPARE_CY	; C>Y
+	BCC	OT11	; no A less than C
+	JMP	COMPARE_ZC
+	; now A>=C so check
+OT11	JMP	COMPARE_DY	; B>C C=1 hit C=0 miss
+
+	; compares for all possible positions
+	; A Robokid left  x	( COLLIDE_LL , COLLIDE_LH )
+	; B Robokid right x	( COLLIDE_RL , COLLIDE_RH )
+	; C Robokid top    y	( COLLIDE_TL , COLLIDE_TH )
+	; D Robokid bottom y	( COLLIDE_BL , COLLIDE_BH )
+
+	; W Enemy   left  x	( MIKE1 , MIKE1+1 )
+	; X Enemy   right x	( MIKE2 , MIKE2_2 )
+	; Y Enemy   top    y	( MIKE1 , MIKE1+1 )
+	; Z Enemy   bottom y	( MIKE2 , MIKE2+1 )
+
+	; Returns with C=0,1 C=1 First larger or equal C=0 smaller
+
+	; Robo left with Enemy left
+COMPARE_AW	LDA	COLLIDE_LL	; robo left
+	SEC
+	SBC	MIKE1	; enemy left
+	LDA	COLLIDE_LH	; robo left
+	SBC	MIKE1+1	; enemy left
+	RTS
+
+	; Enemy right with Robo left
+COMPARE_XA	LDA	MIKE2	; robo left
+	SEC
+	SBC	COLLIDE_LL	; robo left
+	LDA	MIKE2+1	; robo left
+	SBC	COLLIDE_LH	; enemy left
+	RTS
+
+	; Robo right with Enemy left
+COMPARE_BW	LDA	COLLIDE_RL	; robo left
+	SEC
+	SBC	MIKE1	; enemy left
+	LDA	COLLIDE_RH	; robo left
+	SBC	MIKE1+1	; enemy left
+	RTS
+
+	; Robo top with Enemy top
+COMPARE_CY	LDA	COLLIDE_TL	; robo left
+	SEC
+	SBC	MIKE1	; enemy left
+	LDA	COLLIDE_TH	; robo left
+	SBC	MIKE1+1	; enemy left
+	RTS
+
+	; Enemy bottom with Robo top
+COMPARE_ZC	LDA	MIKE2	; robo left
+	SEC
+	SBC	COLLIDE_TL	; robo left
+	LDA	MIKE2+1	; robo left
+	SBC	COLLIDE_TH	; enemy left
+	RTS
+
+	; Robo bottom with Enemy top
+COMPARE_DY	LDA	COLLIDE_BL	; robo left
+	SEC
+	SBC	MIKE1	; enemy left
+	LDA	COLLIDE_BH	; robo left
+	SBC	MIKE1+1	; enemy left
+	RTS
+
+****************************************
+*	BULLET TO ENEMY CHECK	*
+****************************************
+	; current bullet X hit enemy (Y scaned)
+BULLET_HIT	STX	XTEMP	; save
+	LDY	WEAPON_SPR,X	; sprite frame as index
+	LDA	WEAPON_XL,X	; this weapon x
+	CLC
+	ADC	EXADD-TBLOF,Y	; x add table for frame
+	STA	COLLIDE_LL	; left side low
+	LDA	WEAPON_XH,X	; current weapon msb
+	ADC	#0
+	STA	COLLIDE_LH	; left side high
+
+	LDA	COLLIDE_LL	; worked left low
+	CLC
+	ADC	EXLENGTH-TBLOF,Y	; length of sprite data
+	STA	COLLIDE_RL	; right side lo
+	LDA	COLLIDE_LH	; worked left hi
+	ADC	#0
+	STA	COLLIDE_RH	; right side hi
+
+	LDA	WEAPON_YL,X	; this weapon y
+	CLC
+	ADC	EYADD-TBLOF,Y	; add down
+	STA	COLLIDE_TL	; top low
+	LDA	WEAPON_YH,X
+	ADC	#0
+	STA	COLLIDE_TH	; top high
+
+	LDA	COLLIDE_TL
+	CLC
+	ADC	EYLENGTH-TBLOF,Y	; length down sprite
+	STA	COLLIDE_BL	; bottom low
+	LDA	COLLIDE_TH	; old high
+	ADC	#0
+	STA	COLLIDE_BH	; bottom high
+	; Now have a box for weapon sprite to check
+
+	; Now check for a enemy there to collide with
+	LDX	#EN_START	; index to enemy
+HAM_BURGER	LDA	ENEMY_TYPE,X	; anythink there
+	BEQ	NEXT_EN1
+	CMP	#EXPLODE_SEQ	; already exploding ignore
+	BEQ	NEXT_EN1
+	; Now scanning of enemy if far to quick
+	; so when hit once setup a countdown so take more hits
+	; ie a breather.
+	LDA	ENEMY_NOHIT,X	; actuall value
+	BNE	NEXT_EN1	; not zero just been hit
+
+	LDY	ENEMY_SPR,X	; enemy sprite frame as index
+	LDA	ENEMY_XL,X	; enemy x cord
+	CLC
+	ADC	EXADD-TBLOF,Y	; add in a little
+	STA	MIKE1	; left low
+	LDA	ENEMY_XH,X
+	ADC	#0
+	STA	MIKE1+1	; left high
+
+	LDA	EXLENGTH-TBLOF,Y	; length of sprite frame
+	BEQ	NEXT_EN1	; do not want to check frame
+	CLC
+	ADC	MIKE1
+	STA	MIKE2
+	LDA	MIKE1+1	; right low
+	ADC	#0
+	STA	MIKE2+1	; right hi
+	; have now got left and right sides of enemy sprite position
+
+	; detection code is same as for enmy map to robo (ignore compare_xx comments)
+	JSR	COMPARE_AW	; A>W
+	BCC	OT2	; no A less than C
+	JSR	COMPARE_XA
+	BCS	CHECK_Y1	; in side
+NEXT_EN1	LDA	CANFIRE
+	CMP	#3	; atomic bomb
+	BEQ	NEXT_EN3	; bullets aswell
+NEXTEN1	INX
+	CPX	#EN_START+MAX_EN
+BIGMAC	BCC	HAM_BURGER
+	LDX	XTEMP
+	CLC
+	RTS
+	; now A>=C so check
+OT2	JSR	COMPARE_BW	; B>C C=1 hit C=0 miss
+	BCC	NEXT_EN1	; next enemy
+
+	; got here x's have hit now check y
+CHECK_Y1	LDA	ENEMY_YL,X	; current y cord of enemy
+	CLC
+	ADC	EYADD-TBLOF,Y	; sprite pointer offset
+	STA	MIKE1	; top side little add in
+	LDA	ENEMY_YH,X	; high bit
+	ADC	#0
+	STA	MIKE1+1
+	LDA	MIKE1	; old top
+	CLC
+	ADC	EYLENGTH-TBLOF,Y	; y length of sprite for detection
+	STA	MIKE2
+	LDA	MIKE1+1	; old high
+	ADC	#0
+	STA	MIKE2+1
+
+	; have now got y sprite position
+
+	JSR	COMPARE_CY	; C>Y
+	BCC	OTT11	; no A less than C
+	JSR	COMPARE_ZC
+	BCS	HITIT
+NEXT_EN2	LDA	CANFIRE
+	CMP	#3
+	BNE	NEXTEN1
+NEXT_EN3	INX
+	CPX	#EN_START+MAX_EN+MAX_BUL	; bullets aswell
+	BCC	BIGMAC	;HAM_BURGER
+	LDX	XTEMP
+	CLC
+	RTS
+
+	; now A>=C so check
+OTT11	JSR	COMPARE_DY	; B>C C=1 hit C=0 miss
+	BCC	NEXT_EN2
+
+	; have hit something
+HITIT	; jsr to whatever weapons have hit
+	LDY	CANFIRE	; what weapon is this being fired
+	LDA	ENEMY_DAMAGE,X	; state of enemy so far
+	BEQ	NEXT_HIT	; should never do this (only with fly)
+	SEC
+	SBC	KILL_FACTOR,Y	; take from damage to enemy	
+	BCS	TUFF	; some left
+	LDA	#0	; overflow kill off anyway
+TUFF	STA	ENEMY_DAMAGE,X	; let enemy control take care
+NEXT_HIT	CPY	#0	; single fire kill one hit only
+	BEQ	EXB	; exit collide check
+	CMP	#0	; damage for enemy left	
+	BEQ	NEXT_COMP	; dead dont bother to setup
+	LDA	#6	; count down for hit
+	STA	ENEMY_NOHIT,X	; so not to kill to quickly
+NEXT_COMP	CPY	#3	; when atomic bomb kill one
+	BNE	NEXT_EN2	; others kill everything
+BUL_CHK	LDA	WSPEED	; bodge check for exploding part
+	BEQ	NEXT_EN3	; 0 means 5 sprites exploding
+	LDX	XTEMP	; back index to bullet no.
+	SEC
+	RTS
+
+EXB	CMP	#0	; last hit was killed
+	BEQ	JURT	; no delay
+	LDA	#2	; count when hit something
+	STA	ENEMY_NOHIT,X	; with single fire
+JURT	LDX	XTEMP	; back the index to bullet no.
+	SEC		; have hit something
+	RTS
+
+	; damage taken off for weapon type when hit enemy
+KILL_FACTOR	DB	1	; 0 single bullet one damage
+	DB	5	; 1 large
+	DB	4	; 2 three way beam
+	DB	4	; 3 all bits for bomb 5 segments
+	DB	3	; 4 all five little bullets
+
+	; enemy add x in for detection
+EXADD	DB	10,00		; small bullet
+	DB	00,00,00		; big jobber
+	DB	02,00,02,00,00,00,02,12,02,00,02	; three way
+	DB	04,00,00,00,04,00,00,02	; bomb
+	DB	02,02,00,00,00,00,00,00	; explosion
+	DB	00,08		; five spray
+	DB	00,00,00,00		; cloud
+	DB	00,00,00,00		; snail left
+	DB	00,00,00,00		; snail right
+	DB	06		; snail bomb
+	DB	00,00,00,00		; Fly left
+	DB	00,00,00,00		; Fly right
+	DB	00,00,00,00		; Gem
+	DB	00,00,00,00		; bee left
+	DB	00,00,00,00		; bee right
+	DB	00,00,00,00		; pipes
+	DB	06		; pipes bullet
+	DB	00,00,00		; turret bottom
+	DB	00,00,00		; turret top
+	DB	00		; pod 1
+	DB	06,04,02,00		; pod 2
+	DB	08,02		; pods bullets	
+	DB	00		; jumper right
+	DB	00		; jumper left
+	DB	04,02,00,00		; guided missile
+	DB	00,00,00,02
+	DB	04,08,10,10
+	DB	10,10,10,08
+	DB	00,00,00,00,00,00,00,00	; monster 1
+	DB	00,00,00,00,00,00,00
+	DB	00,00,00,00		; monster 2
+	DB	00,00,00,00
+	DB	00,00,00
+	DB	02,02,02
+	DB	00,00,00		; monster 3
+	DB	04,00,04
+	DB	00
+	DB	00,00,06		; monster 4
+	DB	00,00,00,00,00,00
+	DB	00,08,00,00,08,00	; Monster 5
+	DB	02,00,00,00
+	DB	00,00,00,00
+	DB	00,00,00,00
+	DB	00,00,00,00		; Battle mode
+
+	; length of sprite to check
+EXLENGTH	DB	14,14		; small bullet
+	DB	24,24,24		; big jobber
+	DB	10,22,20,24,24,22,20,10,22,24,22	; three way
+	DB	16,24,22,24,16,24,24,22	; bomb
+	DB	18,20,24,24,24,24,24,24	; explosion
+	DB	16,16		; five spray
+	DB	24,24,24,24		; cloud
+	DB	24,24,24,24		; snail left
+	DB	24,24,24,24		; snail right
+	DB	12		; snail bomb
+	DB	24,24,24,24		; Fly left
+	DB	24,24,24,24		; Fly right
+	DB	18,18,18,18		; Gem
+	DB	24,24,24,24		; bee left
+	DB	24,24,24,24		; bee right
+	DB	44,00,00,00		; pipes
+	DB	08		; pipes bullet
+	DB	16,16,16		; turret bottom
+	DB	16,16,16		; turret top
+	DB	24		; pod 1
+	DB	12,16,20,24		; pod 2
+	DB	06,20		; pods bullets	
+	DB	24		; jumper right
+	DB	24		; jumper left
+	DB	14,12,12,12		; guided missile
+	DB	12,12,12,12
+	DB	14,14,14,14
+	DB	14,14,14,14
+	DB	24,24,24,24,24,24,24,24	; monster 1
+	DB	24,00,24,00,24,22,12
+	DB	24,24,24,24		; monster 2
+	DB	00,00,00,00
+	DB	00,00,10
+	DB	14,14,12
+	DB	24,24,24		; monster 3
+	DB	12,16,12
+	DB	10
+	DB	00,00,14		; monster 4
+	DB	14,14,06,10,16,08
+	DB	10,12,12,10,12,12	; Monster 5
+	DB	46,00,00,00
+	DB	24,00,00,00
+	DB	32,00,00,00
+	DB	24,24,24,24		; Battle mode
+
+	; enemy add in yfor detection
+EYADD	DB	09,09		; small bullet
+	DB	03,03,05		; big jobber
+	DB	03,00,00,00,05,00,01,03,00,00,00	; three way
+	DB	00,00,03,01,01,00,03,00	; bomb
+	DB	03,02,01,00,00,00,00,00	; explosion
+	DB	01,01		; five spray
+	DB	00,00,00,00		; cloud
+	DB	00,00,00,00		; snail left
+	DB	00,00,00,00		; snail right
+	DB	04		; snail bomb
+	DB	00,00,00,00		; Fly left
+	DB	00,00,00,00		; Fly right
+	DB	00,00,00,00		; Gem
+	DB	00,00,00,00		; bee left
+	DB	00,00,00,00		; bee right
+	DB	00,00,00,00		; pipes
+	DB	04		; pipes bullet
+	DB	02,02,02		; turret bottom
+	DB	00,00,00		; turret top
+	DB	00		; pod 1
+	DB	06,05,03,00		; pod 2
+	DB	03,08		; pods bullets	
+	DB	01		; jumper right
+	DB	01		; jumper left
+	DB	11,10,09,07		; guided missile
+	DB	05,04,02,01
+	DB	00,01,02,03
+	DB	05,07,09,10
+	DB	00,00,00,00,00,00,00,00	; monster 1
+	DB	00,00,00,00,00,01,00
+	DB	00,00,00,00		; monster 2
+	DB	00,00,00,00
+	DB	00,00,01
+	DB	01,02,00
+	DB	00,11,00		; monster 3
+	DB	01,01,01
+	DB	00
+	DB	01,00,00		; monster 4
+	DB	00,00,00,00,00,00
+	DB	02,00,00,00,00,02	; Monster 5
+	DB	00,00,00,00
+	DB	00,00,00,00
+	DB	00,00,00,00
+	DB	00,00,00,00		; Battle mode
+
+	; length of sprite to check
+EYLENGTH	DB	04,04		; small bullet
+	DB	15,15,11		; big jobber
+	DB	07,21,20,13,03,20,20,07,21,13,21	; three way
+	DB	20,20,14,20,20,21,14,20	; bomb
+	DB	15,17,20,21,21,21,21,21	; explosion
+	DB	05,05		; five spray
+	DB	21,21,21,21		; cloud
+	DB	21,21,21,21		; snail left
+	DB	21,21,21,21		; snail right
+	DB	11		; snail bomb
+	DB	21,21,21,21		; Fly left
+	DB	21,21,21,21		; Fly right
+	DB	15,15,15,15		; Gem
+	DB	21,21,21,21		; bee left
+	DB	21,21,21,21		; bee right
+	DB	36,00,00,00		; pipes
+	DB	09		; pipes bullet
+	DB	14,14,14		; turret bottom
+	DB	14,14,14		; turret top
+	DB	21		; pod 1
+	DB	09,11,15,21		; pod 2
+	DB	15,05		; pods bullets	
+	DB	20		; jumper right
+	DB	20		; jumper left
+	DB	10,10,10,10		; guided missile
+	DB	10,10,10,10
+	DB	10,10,10,10
+	DB	10,10,10,10
+	DB	21,21,21,21,21,21,21,21	; monster 1
+	DB	21,00,21,00,21,20,16
+	DB	21,21,21,21		; monster 2
+	DB	00,00,00,00
+	DB	00,00,20
+	DB	05,05,15
+	DB	21,10,21		; monster 3
+	DB	14,11,14
+	DB	19
+	DB	00,00,21		; monster 4
+	DB	05,05,11,07,04,08
+	DB	14,09,14,14,09,14	; Monster 5
+	DB	42,00,00,00
+	DB	54,00,00,00
+	DB	30,00,00,00
+	DB	21,21,21,21		; Battle mode
+
+****************************************
+*	GET ROBO COLLSISION PARAMS	*
+****************************************
+	; get left and right side of robo's map cords in collision pixels
+ROBOS_COLLIDE	LDA	ROBO_XL
+	STA	COLLIDE_LL	; robo left low as map position
+	CLC
+	ADC	#24	; 12 pixels length *2 for hires
+	STA	COLLIDE_RL	; right low
+	LDA	ROBO_XH
+	STA	COLLIDE_LH	; robo left hi as map position
+	ADC	#0
+	STA	COLLIDE_RH	; right high
+
+	LDA	ROBO_YL	; y low
+	CLC
+	ADC	#1	; 1 pixel down
+	STA	COLLIDE_TL
+	LDA	ROBO_YH	; y high
+	ADC	#0
+	STA	COLLIDE_TH
+
+	LDA	COLLIDE_TL	; top hi
+	CLC
+	ADC	#21	; 1 sprite size robo length
+	STA	COLLIDE_BL	; bottom lo
+	LDA	COLLIDE_TH	; top hi
+	ADC	#0
+	STA	COLLIDE_BH	; bottom hi
+	RTS
+
+****************************************
+*	MOVE SPRITE BY A		*
+****************************************
+	; move  sprite X by A in x direction
+MOVE_SPRITEX	BMI	NOISE	; find direction as sing
+	CLC
+	ADC	SPRITE_XL,X	; move cord
+	STA	SPRITE_XL,X
+	LDA	SPRITE_XH,X	; high bit
+	ADC	#0
+	STA	SPRITE_XH,X
+	RTS
+
+NOISE	CLC
+	ADC	SPRITE_XL,X
+	STA	SPRITE_XL,X
+	LDA	SPRITE_XH,X
+	SBC	#0
+	STA	SPRITE_XH,X
+	RTS
+
+MOVE_SPRITEY	BMI	ART	; find direction as sign val in A
+	CLC
+	ADC	SPRITE_YL,X	; X sprite offset
+	STA	SPRITE_YL,X	; up or down
+	LDA	SPRITE_YH,X
+	ADC	#0
+	STA	SPRITE_YH,X
+	RTS
+
+ART	CLC
+	ADC	SPRITE_YL,X
+	STA	SPRITE_YL,X
+	LDA	SPRITE_YH,X
+	SBC	#0
+	STA	SPRITE_YH,X
+	RTS
+
+	; SEE if sprite is off screen area
+	; check sprite map pixel cords relitive to screen map cords
+	; sprite is off the map when position is 2nd pixel off
+	; whatever side.
+CHECK_SPRITE	LDA	SPRITE_XL,X	; check x first
+	SEC
+	SBC	PIXEL_XL	; screen top left
+	STA	MIKE1	; temp answer lo
+	LDA	SPRITE_XH,X	; pixel map x hi
+	SBC	PIXEL_XH	; top left pixel screen
+	STA	MIKE1+1	; high byte
+	BEQ	CHECK_SPRITEY	; when 0 must be on screen
+	CMP	#<-25 ;4	; high byte if -24
+	BNE	OTH_T1
+	LDA	MIKE1
+	CMP	#>-25 ;4	; low byte of -24
+	BCS	CHECK_SPRITEY	; on side ok
+SEC3_OFF	SEC		; off screen limits
+SAV_BY	RTS
+
+OTH_T1	CMP	#<SCREEN_XLENGTH+2	; high byte
+	BNE	SEC3_OFF	; off screen (0 checked already)
+	LDA	MIKE1	; get back low
+	CMP	#>SCREEN_XLENGTH+2	; low byte
+	BCS	SAV_BY	; off C=1 
+
+	; got here must check y cords for valid range
+	; or called to check y only on screen
+CHECK_SPRITEY	LDA	SPRITE_YL,X	; weapon y lo
+	SEC
+	SBC	PIXEL_YL	; screen pixel cord
+	STA	MIKE1	; temp answer lo
+	LDA	SPRITE_YH,X	; cord y hi
+	SBC	PIXEL_YH	; screen pixel cord
+	BEQ	ATH_T1	; high bit zero
+	CMP	#<-21	; high byte if -21
+	BNE	SEC4_OFF
+	LDA	MIKE1
+	CMP	#>-21	; low byte of -21
+	BCS	ONSFL1	; 
+SEC4_OFF	SEC		; off screen limits
+	RTS
+
+ONSFL1	CLC		; on screen
+	RTS
+
+	; here when msb is 0
+ATH_T1	LDA	MIKE1	; get back y low
+	CMP	#>SCREEN_YLENGTH+1	; low byte
+	RTS		; c=0 < c=1 >
+
+
+****************************************
+*	BULLET ROUTINES		*
+****************************************
+BULLET_UPDATE	LDX	#BU_START	; index start
+UP_BLOOP	LDY	BULLET_TYPE,X
+	BEQ	PASS
+	LDA	BUL_LOW-1,Y	; jump to it
+	STA	!SMC+1
+	LDA	BUL_HIGH-1,Y
+	STA	!SMC+2	; go to high
+!SMC	JSR	&FFFF
+PASS	INX
+	CPX	#BU_START+MAX_BUL	; update all of them
+	BCC	UP_BLOOP
+	RTS
+
+BUL_LOW	DL	UP_BULLET1,UP_BULLET2,UP_BULLET3,UP_GUIDED
+BUL_HIGH	DH	UP_BULLET1,UP_BULLET2,UP_BULLET3,UP_GUIDED
+
+	; work parameters for bullet movement (fixed pattern)
+BUL_SPEED	EQU	2 ;1	; speed of bullet on screen
+
+MOV_LEFT	EQU	-BUL_SPEED	; minus in x 
+MOV_RIGHT	EQU	BUL_SPEED	; add in x
+MOV_UP	EQU	-BUL_SPEED	; minus in y
+MOV_DOWN	EQU	BUL_SPEED	; add in y
+
+
+****************************************
+*	LOCATE FREE BULLET SPOT	*
+****************************************
+BUL_FREE	LDY	#BU_START	; amount to check
+FIND_FREE1	LDA	BULLET_TYPE,Y	; in use
+	BEQ	FREE_ONE1	; 0 is yes
+	INY
+BU_USE	CPY	#BU_START+MAX_BUL	; else try another
+	BCC	FIND_FREE1
+	RTS		; sorry all full today
+FREE_ONE1	CLC		; got place ok
+SPUDS	RTS
+
+BULLET4_SETUP	JSR	BUL_FREE	; fine place
+	BCS	SPUDS	; none available
+	LDA	#LT_BLUE
+	STA	BULLET_COL,Y
+	LDA	#PODS_BUL+1	; l/r pointing
+	STA	ENEMY_SPR,Y
+	LDA	#1
+	STA	BULLET_DAMAGE,Y	; one hit to kill
+	LDA	#0
+	STA	BULLET_NOHIT,Y	; able to kill
+
+	JSR	AS_ENEMYY	; y map pos same as pods
+
+	LDA	ENEMY_XDIR,X	; 128 of pod past robo
+	BMI	MV_LE	; want to move left
+
+	LDA	#4 ;MOV_RIGHT
+	STA	BULLET_XDIR,Y	; movement value
+	LDA	ENEMY_XL,X
+	CLC
+	ADC	#22	; after sprite
+	STA	BULLET_XL,Y
+	LDA	ENEMY_XH,X
+	ADC	#0
+	STA	BULLET_XH,Y
+	JMP	SET_TY
+MV_LE	LDA	#-4 ;MOV_LEFT
+	STA	BULLET_XDIR,Y	; movement value
+	LDA	ENEMY_XL,X
+	SEC
+	SBC	#22	; before sprite
+	STA	BULLET_XL,Y
+	LDA	ENEMY_XH,X
+	SBC	#0
+	STA	BULLET_XH,Y
+SET_TY	LDA	#2
+	STA	BULLET_TYPE,Y
+	RTS
+
+BULLET5_SETUP	JSR	BUL_FREE	; fine place
+	BCS	NONE_AV	; none available
+	LDA	#LT_BLUE
+	STA	BULLET_COL,Y
+	LDA	#PODS_BUL	; u/d pointing
+	STA	ENEMY_SPR,Y
+	LDA	#1
+	STA	BULLET_DAMAGE,Y	; one hit to kill
+	LDA	#0
+	STA	BULLET_NOHIT,Y	; able to kill
+
+	JSR	AS_ENEMYX
+
+	LDA	ENEMY_YDIR,X	; 128 of pod past robo
+	BMI	MV_LE1	; move up
+
+	LDA	#MOV_DOWN
+	STA	BULLET_YDIR,Y	; movement value
+	LDA	ENEMY_YL,X
+	CLC
+	ADC	#18	; after sprite
+	STA	BULLET_YL,Y
+	LDA	ENEMY_YH,X
+	ADC	#0
+	STA	BULLET_YH,Y
+	JMP	SET_TY1
+
+MV_LE1	LDA	#MOV_UP
+	STA	BULLET_YDIR,Y	; movement value
+	LDA	ENEMY_YL,X
+	SEC
+	SBC	#18	; before sprite
+	STA	BULLET_YL,Y
+	LDA	ENEMY_YH,X
+	SBC	#0
+	STA	BULLET_YH,Y
+SET_TY1	LDA	#3
+	STA	BULLET_TYPE,Y
+NONE_AV	RTS
+
+	; bullet for pipes
+BULLET2_SETUP	JSR	BUL_FREE	; fine place
+	BCS	NONE_AV	; none available
+	LDA	ENEMY_XL,X
+	CLC
+	ADC	#20	; in middle of pipes
+	STA	BULLET_XL,Y
+	LDA	ENEMY_XH,X
+	ADC	#0
+	STA	BULLET_XH,Y
+	LDA	ENEMY_YL,X
+	CLC
+	ADC	#16
+	STA	BULLET_YL,Y
+	LDA	ENEMY_YH,X
+	ADC	#0
+	STA	BULLET_YH,Y
+	LDA	#LT_GREY
+	STA	BULLET_COL,Y
+	LDA	#PIPE_BUL	; bullet for pipes and turret
+	STA	BULLET_SPR,Y	; set sprite here
+	JMP	SET_REST_BUL
+
+	; Bullet for turrets
+BULLET3_SETUP	JSR	BUL_FREE	; fine place
+	BCS	NONE_AV	; none available
+	LDA	#LT_GREY
+	STA	BULLET_COL,Y
+	LDA	#PIPE_BUL	; bullet for pipes and turret
+	JMP	SEQUEN
+
+	; Bullet for Snail
+BULLET1_SETUP	JSR	BUL_FREE	; fine place
+	BCS	NONE_AV	; none available
+	LDA	#ORANGE
+	STA	BULLET_COL,Y
+	LDA	#SNAIL_BUL	; bullet for snail
+SEQUEN	STA	BULLET_SPR,Y
+	JSR	AS_ENEMYX	; copy cords from enemy
+	JSR	AS_ENEMYY	; x & y
+SET_REST_BUL	LDA	#1	; line draw type
+	STA	BULLET_TYPE,Y
+	STA	BULLET_DAMAGE,Y	; one hit to kill
+	LDA	#0
+	STA	BULLET_NOHIT,Y	; able to kill
+	STX	XTEMP	; save the x enemy pointer
+	LDX	#MOV_LEFT	; default sub in x (enemy from right side mostly)
+	LDA	BULLET_XL,Y	; bullets x low
+	SEC
+	SBC	ROBO_XL	; take robos
+	STA	BULLET_XDIFF,Y	; size
+	LDA	BULLET_XH,Y	; take high into workings
+	SBC	ROBO_XH	; from robo
+	BCS	!ALLOK	; bullet was the biggest
+	LDA	BULLET_XDIFF,Y	; otherwise get abs
+	EOR	#255	; vale of xdifference
+	ADC	#1	; c=0
+	STA	BULLET_XDIFF,Y
+	LDX	#MOV_RIGHT
+!ALLOK	TXA		; no STY abs,X (boo!)
+	STA	BULLET_XDIR,Y
+
+	LDX	#MOV_UP	; default sub in y (enemy from bottom mostly?)
+	LDA	BULLET_YL,Y	; bullets y low
+	SEC
+	SBC	ROBO_YL	; take robos
+	STA	BULLET_YDIFF,Y	; size
+	LDA	BULLET_YH,Y	; take high into workings
+	SBC	ROBO_YH	; from robo
+	BCS	!ALLOK1	; bullet was the biggest
+	LDA	BULLET_YDIFF,Y	; otherwise get abs
+	EOR	#255	; vale of xdifference
+	ADC	#1	; c=0
+	STA	BULLET_YDIFF,Y
+	LDX	#MOV_DOWN
+!ALLOK1	TXA		; no STY abs,X (boo!)
+	STA	BULLET_YDIR,Y
+	LDX	XTEMP	; back to enemy pointer
+
+	; reached here will have abs xdiff,ydiff and x,y move
+	; Now see which direction to use as base movement
+	LDA	BULLET_YDIFF,Y
+	CMP	BULLET_XDIFF,Y
+	BCS	!USE_Y
+	LDA	BULLET_XDIFF,Y	; x amount
+	LSR	A	; as count setup
+	STA	BULLET_COUNT,Y
+	LDA	#0	; x as base
+	STA	BULLET_BASE,Y
+	RTS
+
+!USE_Y	LSR	A	; y amount
+	STA	BULLET_COUNT,Y	; as count setup
+	LDA	#255	; y as base
+	STA	BULLET_BASE,Y
+	RTS
+
+	; one update of bullets position
+UP_BULLET1	LDA	BULLET_DAMAGE,X	; been hit
+	BEQ	TAKE_OFF1	; will have been bomb
+	JSR	ENEMY_HIT_ROBO
+	BCC	!MISSED
+	LDA	CHEATMODE		; kill robo
+	STA	HIT
+!MISSED	LDA	BULLET_BASE,X
+	BMI	USE_Y
+
+	LDA	BULLET_XDIR,X	; do a base move in x direction
+	JSR	MOVE_SPRITEX	; move sprite
+	LDA	#2
+	BIT	LEVEL_BYTE
+	BNE	MON_SCR1	; monster screen not hit anything
+	JSR	BULLET_SIDE	; hit anything on side of sprite
+	BNE	TAKE_OFF1
+MON_SCR1	LDA	BULLET_COUNT,X
+	SEC
+	SBC	BULLET_YDIFF,X	; y as error loop
+	STA	BULLET_COUNT,X
+	BCS	BELOW1	; when overflow move in other dir
+	LDA	BULLET_YDIR,X	; othere way is in y
+	JSR	MOVE_SPRITEY	; move sprite
+	LDA	BULLET_YDIR,X
+	BMI	GARRY	; moveing up screen look above head
+	LDA	#2
+	BIT	LEVEL_BYTE
+	BNE	THERE_STILL1	; monster screen not hit anything
+	JSR	BULLET_BOTTOM
+	BEQ	THERE_STILL1
+TAKE_OFF1	LDA	#0	; delete bullet
+	STA	BULLET_TYPE,X	
+	RTS		; exit
+GARRY	LDA	#2
+	BIT	LEVEL_BYTE
+	BNE	THERE_STILL1	; monster screen not hit anything
+	JSR	BULLET_TOP
+	BNE	TAKE_OFF1
+THERE_STILL1	LDA	BULLET_COUNT,X
+	CLC
+	ADC	BULLET_XDIFF,X	; as error loop
+	STA	BULLET_COUNT,X
+BELOW1	JSR	CHECK_SPRITE	; on screen still
+	BCS	TAKE_OFF1	; no
+	RTS
+
+USE_Y	LDA	BULLET_YDIR,X	; do a base move in y direction
+	JSR	MOVE_SPRITEY	; move sprite
+	LDA	BULLET_YDIR,X
+	BMI	LINIKER	; moveing up screen look above head
+	LDA	#2
+	BIT	LEVEL_BYTE
+	BNE	THERE_STILL2	; monster screen not hit anything
+	JSR	BULLET_BOTTOM
+	BEQ	THERE_STILL2
+TAKE_OFF2	LDA	#0	; delete bullet
+	STA	BULLET_TYPE,X	
+	RTS		; exit
+
+LINIKER	LDA	#2
+	BIT	LEVEL_BYTE
+	BNE	THERE_STILL2	; monster screen not hit anything
+	JSR	BULLET_TOP
+	BNE	TAKE_OFF2
+THERE_STILL2	LDA	BULLET_COUNT,X
+	SEC
+	SBC	BULLET_XDIFF,X	; x as error loop
+	STA	BULLET_COUNT,X
+	BCS	BELOW_M	; when overflow move in other dir
+	LDA	BULLET_XDIR,X	; othere way is in x
+	JSR	MOVE_SPRITEX	; move sprite
+	LDA	#2
+	BIT	LEVEL_BYTE
+	BNE	THERE_STILL6	; monster screen not hit anything
+	JSR	BULLET_SIDE	; on side
+	BNE	TAKE_OFF2	; delete
+THERE_STILL6	LDA	BULLET_COUNT,X
+	CLC
+	ADC	BULLET_YDIFF,X	; as error loop
+	STA	BULLET_COUNT,X
+BELOW_M	JSR	CHECK_SPRITE	; on screen still
+	BCS	TAKE_OFF2	; no
+	RTS
+
+	; one update of bullets position
+	; left or right for pods bullet
+UP_BULLET2	LDA	BULLET_DAMAGE,X	; been hit
+	BEQ	TAKE_OFF3	; will have been bomb
+	JSR	ENEMY_HIT_ROBO
+	BCC	!MISSED
+	LDA	CHEATMODE
+	STA	HIT
+!MISSED	LDA	BULLET_XDIR,X	; do a base move in x direction
+	JSR	MOVE_SPRITEX	; move sprite
+	LDA	#%00000100
+	BIT	LEVEL_BYTE
+	BEQ	SCR_BT	; scrolling or battle mode
+	JSR	BULLET_HIT	; hit any enemy firstly (whith enemy bullet)
+	BCS	TAKE_OFF3	; one hit /bullet
+	BCC	LEV_ON1	; else see if still on screen
+SCR_BT	JSR	BULLET_SIDE	; hit anything on side of sprite
+	BEQ	LEV_ON1
+TAKE_OFF3	LDA	#0	; delete bullet
+	STA	BULLET_TYPE,X	
+	RTS		; exit
+LEV_ON1	JSR	CHECK_SPRITE	; on screen still
+	BCS	TAKE_OFF3	; no
+	RTS
+
+	; one update of bullets position
+	; up or down for pods bullet
+UP_BULLET3	LDA	BULLET_DAMAGE,X	; been hit
+	BEQ	TAKE_OFF4	; will have been bomb
+	JSR	ENEMY_HIT_ROBO
+	BCC	!MISSED
+	LDA	CHEATMODE
+	STA	HIT
+!MISSED	LDA	BULLET_YDIR,X	; do a base move in x direction
+	JSR	MOVE_SPRITEY	; move sprite
+	LDA	BULLET_YDIR,X
+	BMI	BARNS	; moveing up screen look above head
+	JSR	BULLET_BOTTOM
+	BEQ	THERE_STILL3
+TAKE_OFF4	LDA	#0	; delete bullet
+	STA	BULLET_TYPE,X
+	RTS		; exit
+BARNS	JSR	BULLET_TOP
+	BNE	TAKE_OFF4
+THERE_STILL3	JSR	CHECK_SPRITE	; on screen still
+	BCS	TAKE_OFF4	; no
+LEMONJUICE	RTS
+
+	; Guided missile setup
+SETUP_GUIDED	JSR	BUL_FREE	; any free
+	BCS	LEMONJUICE
+
+	JSR	AS_ENEMYX
+	JSR	AS_ENEMYY
+
+	STX	UGLY_CODE+1	; must save as enemy control wants
+	TYA		; it back in good state
+	TAX		; use x as index as routines need
+	JSR	FIND_BEARING	; get direction to go to
+	STA	BULLET_CLOCK,X	; as current clock position
+	JSR	SET_PARAMS	; line vectors & spr
+	LDA	#LT_BLUE	; colour
+	STA	BULLET_COL,X
+	LDA	#8
+	STA	BULLET_SPEED,X	; not to quick moving
+	LDA	#4	; guided type
+	STA	BULLET_TYPE,X
+	LDA	#1
+	STA	BULLET_DAMAGE,X	; one hit to kill
+	LDA	#0
+	STA	BULLET_NOHIT,X	; able to kill
+UGLY_CODE	LDX	#255	; get back currect value
+	RTS
+
+AS_ENEMYX	LDA	ENEMY_XL,X	; same map as enemy X
+	STA	BULLET_XL,Y
+	LDA	ENEMY_XH,X
+	STA	BULLET_XH,Y
+	RTS
+
+AS_ENEMYY	LDA	ENEMY_YL,X	; same map as enemy Y
+	STA	BULLET_YL,Y
+	LDA	ENEMY_YH,X
+	STA	BULLET_YH,Y
+	RTS
+
+	; Setup line move values for each current required bearing
+SET_PARAMS	LDY	BULLET_CLOCK,X
+	TYA
+	CLC
+	ADC	#GUIDED_BUL
+	STA	BULLET_SPR,X
+SET_BUL_PAR	LDA	TB_BASE,Y	; second entry
+	STA	BULLET_BASE,X	; for four spray bullet
+	LDA	TB_XDIR,Y
+	STA	BULLET_XDIR,X
+	LDA	TB_YDIR,Y
+	STA	BULLET_YDIR,X
+	LDA	TB_COUNT,Y
+	STA	BULLET_COUNT,X
+	LDA	TB_XDIFF,Y
+	STA	BULLET_XDIFF,X
+	LDA	TB_YDIFF,Y
+	STA	BULLET_YDIFF,X
+ON_CORSE	RTS
+
+	; tables for guided missiles direction vectors
+
+TB_BASE	DB	255,255,255,0,0,0,255,255,255,255,255,0,0,0,255,255
+TB_XDIR	DB	0,-2,-2,-2,-2,-2,-2,-2,0,2,2,2,2,2,2,2
+TB_YDIR	DB	2,2,2,2,0,-2,-2,-2,-2,-2,-2,-2,0,2,2,2
+TB_COUNT	DB	&1F,&1C,&1A,&31,&2A,&33,&1A,&1F,&1A,&1C,&1A,&26,&24,&32,&1A,&1F
+TB_XDIFF	DB	0,&27,&34,&63,&54,&67,&34,&21,0,&25,&34,&4D,&48,&65,&34,&21
+TB_YDIFF	DB	&3E,&38,&34,&1E,0,&2A,&34,&3E,&34,&38,&34,&22,0,&18,&34,&3E
+
+	
+UP_GUIDED	DEC	BULLET_SPEED,X
+	BEQ	NEWPOSITION	; get new homeing position to robo
+	JMP	UP_BULLET1
+
+NEWPOSITION	LDA	#8	; how fast for new bearing
+	STA	BULLET_SPEED,X	; reset up
+	JSR	FIND_BEARING
+	CMP	BULLET_CLOCK,X	; as last position then on target
+	BEQ	ON_CORSE
+	STA	TEMP	; save new bearing to get to
+	SEC
+	SBC	BULLET_CLOCK,X	; current
+	BPL	GOTCORRECT	; past
+	LDA	BULLET_CLOCK,X
+	SEC
+	SBC	TEMP
+	CMP	#8
+	BCS	DOWN_DOWN
+	BCC	TIME_TRAVEL
+
+GOTCORRECT	CMP	#8	; distance away
+	BCS	TIME_TRAVEL	; get quickest way
+DOWN_DOWN	INC	BULLET_CLOCK,X	; next on
+	LDA	BULLET_CLOCK,X
+	AND	#15
+	STA	BULLET_CLOCK,X
+	JMP	SET_PARAMS	; now set new position
+TIME_TRAVEL	DEC	BULLET_CLOCK,X	; previous
+	LDA	BULLET_CLOCK,X
+	AND	#15
+	STA	BULLET_CLOCK,X
+	JMP	SET_PARAMS	; now set new position
+
+FIND_BEARING	JSR	DISTANCEX
+	BPL	SECONDHALF
+	LDA	#0
+	NOW
+SECONDHALF	LDA	#8
+	STA	TEMP	; as index for table base
+	JSR	DISTANCEY
+	BPL	ADE
+	LDA	TEMP
+	ORA	#4	; down on player
+	STA	TEMP
+ADE
+	LDA	MIKE1+1	; length x high
+	BNE	XBIGGER	; above 256 wow
+
+	LDA	MIKE1	; x diff
+	CMP	MIKE2	; y diff
+	BCS	XBIGGER	; or same as y
+
+	; y bigger
+	STA	VAL1	; x as VAL1
+	LDA	MIKE2	; half y
+	LSR	A
+	STA	VAL2	; as VAL2
+	LDA	TEMP
+	ORA	#2
+	STA	TEMP
+	JSR	DIVIDE
+	CLC
+	ADC	TEMP
+	TAY
+	LDA	BEARING_TAB1,Y	; value
+	RTS
+
+BEARING_TAB1	DB	0,0,0,1
+	DB	0,0,7,6
+	DB	0,0,15,14
+	DB	0,0,8,9
+
+XBIGGER	LDA	MIKE1+1	; get half
+	LSR	A	; x size
+	ROR	MIKE1
+	LDA	MIKE1	; .5 of x size
+	STA	VAL2	; as VAL2
+	LDA	MIKE2	; y length
+	STA	VAL1	; as VAL1
+CARRY_ON	JSR	DIVIDE
+	CLC
+	ADC	TEMP
+	TAY
+	LDA	BEARING_TAB2,Y	; value
+	RTS
+
+BEARING_TAB2	DB	3,2,1,0
+	DB	4,5,6,0	;7
+	DB	13,14,14,0	;13
+	DB	12,11,10,0	;12
+
+VAL1	EQU	XTEMP
+VAL2	EQU	YTEMP
+
+	; VAL1 destroyed
+	; 8 bit division
+	; VAL1 =  VAL1 / VAL2
+	; Remainder in ANS if required
+DIVIDE	LDA	#0
+	ASL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!1
+	SBC	VAL2
+!1	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!2
+	SBC	VAL2
+!2	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!3
+	SBC	VAL2
+!3	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!4
+	SBC	VAL2
+!4	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!5
+	SBC	VAL2
+!5	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!6
+	SBC	VAL2
+!6	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!7
+	SBC	VAL2
+!7	ROL	VAL1
+	ROL	A
+	CMP	VAL2
+	BCC	!8
+	SBC	VAL2
+!8	ROL	VAL1
+	LDA	VAL1	; get answer in A
+	;STA	ANS
+	RTS
+

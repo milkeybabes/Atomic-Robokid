@@ -1,0 +1,1392 @@
+****************************************
+*	MONSTER 1		*
+****************************************
+set_m1gunt	LDA	SPECIAL,X	; presets data look up
+	STA	ENEMY_ACT,Y	; save at what one ie top or bottom
+	BEQ	TOP_ON
+	LDA	#MON1_SPR+8
+	NOW
+TOP_ON	LDA	#MON1_SPR+10
+	STA	ENEMY_SPR,Y	; what one
+	
+	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#15	; shots to kill
+	STA	ENEMY_DAMAGE,Y
+	LDA	#0	; alble to kill
+	STA	ENEMY_NOHIT,Y
+	LDA	#1
+	STA	ENEMY_TIMES,Y	; able to fire / killed
+	STA	ENEMY_COUNT,Y	; bullet fire speed
+	RTS
+
+do_m1gunt	LDA	ENEMY_TIMES,X	; times as what is doing
+	BEQ	SET_NOUSE	; 0 means killed off
+	LDA	ENEMY_NOHIT,X
+	BEQ	ATZ	; count down until 0
+	DEC	ENEMY_NOHIT,X
+ATZ	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	!ALIVE
+	LDA	#255
+	STA	ENEMY_NOHIT,X	; can not kill at all ok
+	LDA	#0
+	STA	ENEMY_TIMES,X	; now dead no hit again
+	LDY	#2	; some points
+	JSR	SCOREADD
+	LDA	ENEMY_TYPE,X	; same type please
+	JMP	EXPLODE_ENEMY	; explode
+
+
+!ALIVE	; turrets there now see if want to fire at robo
+	JSR	CHECK_SPRITE	; turret on map
+	BCS	NOTSEEN	; if not no fire at robo
+
+	JSR	DISTANCEX	; robo behind bullets
+	BMI	NOTSEEN	; then ignore fire at robo
+	LDA	ENEMY_ACT,X	; top or bottom one
+	BNE	BOONE	; bottom turret
+	JSR	DISTANCEY	; diatance ans position
+	BMI	FIRB	; below robo then fire
+NOTSEEN	RTS
+BOONE	JSR	DISTANCEY	; bottom turret
+	BMI	NOTSEEN	; below robo
+FIRB	DEC	ENEMY_COUNT,X	; bullet fire speed
+	BNE	NOTSEEN
+	LDA	#20
+	STA	ENEMY_COUNT,X	; reset delay
+	JMP	BULLET3_SETUP	; as turrets bullet
+
+SET_NOUSE	LDA	#MED_GREY	; back to normal colour
+	STA	ENEMY_COL,X
+	LDA	ENEMY_ACT,X	; what preset
+	BEQ	SET1
+	LDA	#MON1_SPR+9
+	NOW
+SET1	LDA	#MON1_SPR+11
+	STA	ENEMY_SPR,X
+	RTS
+
+set_m1nose	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#20	; shots to kill
+	STA	ENEMY_DAMAGE,Y
+	LDA	#1	;  can not kill
+	STA	ENEMY_NOHIT,Y
+	LDA	#MON1_SPR+12	; nose cover
+	STA	ENEMY_SPR,Y
+	LDA	#0	; nose there
+	STA	ENEMY_ACT,Y	; so now when killed turrets
+BITLEFT	RTS
+
+do_m1nose	LDA	ENEMY_ACT,X	; whats there
+	BNE	BLANK_COVER	; look for hits and kill monster
+	LDA	ENEMY_TIMES+EN_START+7; turret 1 0 on screen <>0 killed
+	ORA	ENEMY_TIMES+EN_START+8 ; second one
+	BNE	BITLEFT	; turret/s still alive
+	LDA	#1
+	STA	ENEMY_ACT,X	; blank sprite will be here
+	LDA	ENEMY_TYPE,X	; next type of still me
+	JSR	EXPLODE_ENEMY
+	LDA	#20	; big delay before explosion
+	STA	ENEMY_SPEED,X
+	LDA	#40
+	STA	ENEMY_DAMAGE,X	; hard to kill ok
+ALI	RTS
+
+BLANK_COVER	LDA	#MON1_SPR+14	; blank for nose (so can hit)
+	STA	ENEMY_SPR,X
+	LDA	ENEMY_NOHIT,X	; able to shoot
+	BEQ	NONL
+	DEC	ENEMY_NOHIT,X	; count down
+	LDA	ENEMY_COL,X
+	EOR	#RED~WHITE
+	NOW
+NONL	LDA	#RED	; red nose
+	STA	ENEMY_COL,X
+	LDA	ENEMY_DAMAGE,X	; dead yet ?
+	BNE	ALI
+	JSR	EXPLODE_ALL	; explode all sprites
+	LDX	#EN_START-1	; when return INX so start again
+	LDA	#0	; that are in use
+	LDY	#&90	; some points
+	JMP	SCOREADD
+
+	; Set all sprites that are on screen to explosions
+EXPLODE_ALL	LDX	#EN_START	; 9 enemy exists
+KILL_LOOP	LDY	ENEMY_TYPE,X	; anything here
+	BEQ	NO_ENT
+	JSR	KILL_ENEMY
+NO_ENT	INX
+	CPX	#EN_START+MAX_EN
+	BCC	KILL_LOOP
+	RTS
+
+****************************************
+*	MONSTERS'S ARM		*
+****************************************
+RESTRICT	EQU	2
+
+set_m1arm	LDA	ENSP-EN_START,Y	; sprite for each one
+	STA	ENEMY_SPR,Y
+	LDA	#16
+	STA	ENEMY_COUNT,Y	; set all indexes
+	LDA	#LT_BLUE
+	STA	ENEMY_COL,Y
+	LDA	#RESTRICT
+	STA	ENEMY_XDIR,Y	; way going in table
+	STA	OTHERWAY+1	; when switched to top
+	LDA	#1	; next frame
+	STA	ENEMY_SPEED,Y
+	STA	ENEMY_NOHIT,Y	; cannot kill sections (directly)
+	STA	ENEMY_YDIR,Y	; move arm out (ie expansion + xx)
+	STA	ENEMY_TIMES,Y	; head frame speed for move
+	STA	ENEMY_ACT,Y	; move all parts of arm
+	LDA	#&E0	; cords of first seg must be for
+	STA	TMAP_XL+0	; bottom head position
+	STA	TMAP_YL+0	; both same ok
+	LDA	SPECIAL,X
+	STA	ENEMY_SPECIAL,Y	; copy special byte
+	BEQ	NOFRIN	; no frame index setup
+	LDA	#0	; head sections only
+	STA	ENEMY_FRAME,Y
+	STA	EXPANSION	; will be done twice
+	LDA	#16	; minimum arm x table offset
+	STA	MINAX+1
+	LDA	#46	; others are 48 to 78
+	STA	MAXAX+1	; maximum arm x table offset
+NOFRIN	RTS		; to start with
+
+ENSP	DB	MON1_SPR+13	; leg part
+	DB	MON1_SPR+13
+	DB	MON1_SPR+13
+	DB	MON1_SPR+13
+	DB	MON1_SPR+13
+	DB	MON1_SPR+0	; Head section
+	DB	MON1_SPR+0	; Other Head section
+
+CYCTB1	DB	MON1_SPR+0
+	DB	MON1_SPR+7
+	DB	MON1_SPR+6
+	DB	MON1_SPR+5
+	DB	MON1_SPR+4
+	DB	MON1_SPR+5
+	DB	MON1_SPR+6
+	DB	MON1_SPR+7
+
+CYCTB2	DB	MON1_SPR+0
+	DB	MON1_SPR+1
+	DB	MON1_SPR+2
+	DB	MON1_SPR+3
+	DB	MON1_SPR+4
+	DB	MON1_SPR+3
+	DB	MON1_SPR+2
+	DB	MON1_SPR+1
+
+BELOW_ARM	LDA	ENEMY_SPECIAL+EN_START+5	; current head
+	BMI	BOTHEAD	; bottom one
+	JSR	DISTANCEY
+	BMI	BEL
+	LDA	MIKE2
+	CMP	#30	
+	RTS
+
+BOTHEAD	JSR	DISTANCEY
+	BPL	BEL
+	LDA	MIKE2
+	CMP	#30	; C=0 less otherwise Way above arm
+	RTS	
+BEL	CLC		; C=0 is below
+	RTS
+
+do_m1arm	LDA	ENEMY_SPECIAL,X	; head section
+	BEQ	BODYONLY
+	
+	DEC	ENEMY_TIMES,X	; speed for next frame
+	BNE	BODYONLY
+	LDA	#35	; reset speed
+	STA	ENEMY_TIMES,X
+	LDY	ENEMY_FRAME,X	; index for frame of animation
+	LDA	ENEMY_SPECIAL,X	; which one top or bottom
+	BMI	FIRSTB	; first table bottom head
+	LDA	CYCTB2,Y	; top head table
+	BNE	GOTR	; past next
+FIRSTB	LDA	CYCTB1,Y	; actual sprite frame
+GOTR	STA	ENEMY_SPR,X	; new sprite frame
+	INY
+	TYA
+	AND	#7	; all on range of 0 to 7
+	STA	ENEMY_FRAME,X	; index save back
+
+BODYONLY	LDA	ENEMY_SPECIAL,X	; what is not in
+	BEQ	SEGM	; 0 then segments
+	AND	#1	; else see what head attached
+	BNE	DOUBLEJ	; will be last one ALSO X<>0
+	; Now here when head that is not being used is index
+	RTS	
+
+SEGM	CPX	#EN_START	; first part
+	BEQ	FIR_SEG
+DOUBLEJ	JMP	MOVEOTH	; other parts move
+FIR_SEG	LDA	ENEMY_YDIR,X
+	BEQ	WHATELSE
+	BPL	ADDED	; move out
+	JSR	BELOW_ARM
+	BCS	STILABV	; still above
+	LDA	#1	; retract arm back
+	STA	ENEMY_YDIR,X
+DOAAR	JMP	do_arm	; still move parts though
+STILABV	LDA	EXPANSION
+	BEQ	ALAO
+	SEC
+	SBC	#2
+	STA	EXPANSION
+	BNE	DOAAR	; do arm
+ALAO	LDA	#0
+	STA	ENEMY_YDIR,X
+	STA	ENEMY_ACT,X
+	STA	ENEMY_TYPE+EN_START+1	; kill off
+	STA	ENEMY_TYPE+EN_START+2	; other
+	STA	ENEMY_TYPE+EN_START+3	; sections
+	STA	ENEMY_TYPE+EN_START+4	; when all together
+	RTS
+
+ADDED	JSR	BELOW_ARM	; below bottom arm
+	BCC	STILBEL
+	LDA	#-1	; retract arm back
+	STA	ENEMY_YDIR,X
+JOCK	JMP	do_arm	; still move parts though
+
+STILBEL	LDA	EXPANSION
+	CLC
+	ADC	#2
+	STA	EXPANSION
+	CMP	#200
+	BCC	JOCK	; move segement
+	LDA	#0
+	STA	ENEMY_YDIR,X	; no more move out
+	RTS
+
+	; Y has finished moveing
+WHATELSE	LDA	ENEMY_ACT,X	; first section
+	BNE	ATFULL
+	JSR	BELOW_ARM
+	BCS	FLIP
+	LDA	#1	; expand back out
+	STA	ENEMY_YDIR,X
+	STA	ENEMY_ACT,X
+	LDA	#MON1_SPR+13
+	STA	ENEMY_SPR,X
+	LDA	ENEMY_TYPE,X	; current (what ever)
+	STA	ENEMY_TYPE+EN_START+1	; kill off
+	STA	ENEMY_TYPE+EN_START+2	; other
+	STA	ENEMY_TYPE+EN_START+3	; sections
+	STA	ENEMY_TYPE+EN_START+4	; when all together
+	RTS
+
+FLIP	JMP	REVALL
+
+ATFULL	JSR	BELOW_ARM
+	BCC	COLN
+	LDA	#-1	; retract arm back
+	STA	ENEMY_YDIR,X
+COLN	JMP	do_arm	; still move parts though
+
+MOVEOTH	LDA	ENEMY_ACT+EN_START	; first section has control
+	BNE	do_arm	; <>0 all parts moveing
+	LDA	ENEMY_SPR,X	; get frame for head
+	STA	ENEMY_SPR+EN_START	; copy to body. so sprite
+	RTS		; does not appear over head
+
+	; Swap 5,6 and 0 bits about
+REVALL	LDY	ENEMY_XL+EN_START+6
+	LDA	ENEMY_XL+EN_START+5
+	STA	ENEMY_XL+EN_START+6
+	STY	ENEMY_XL+EN_START+5
+	STY	TMAP_XL	; preset start place
+	STY	ENEMY_XL+EN_START+0	; first seg aswell
+
+	LDY	ENEMY_YL+EN_START+6
+	LDA	ENEMY_YL+EN_START+5
+	STA	ENEMY_YL+EN_START+6
+	STY	ENEMY_YL+EN_START+5
+	STY	ENEMY_YL+EN_START+0	; first seg aswell
+	STY	TMAP_YL	; preset start place
+
+	LDY	ENEMY_SPR+EN_START+6
+	LDA	ENEMY_SPR+EN_START+5
+	STA	ENEMY_SPR+EN_START+6
+	STY	ENEMY_SPR+EN_START+5
+	STY	ENEMY_SPR+EN_START+0; first sprite is copy of head
+
+	LDY	ENEMY_SPECIAL+EN_START+6
+	LDA	ENEMY_SPECIAL+EN_START+5
+	AND	#%11111110	; take out not attached bit
+	STA	ENEMY_SPECIAL+EN_START+6
+	TYA
+	ORA	#1
+	STA	ENEMY_SPECIAL+EN_START+5
+
+	LDA	MINAX+1
+	EOR	#16~(64+14)
+	STA	MINAX+1
+	STA	ENEMY_COUNT+EN_START+0	; all start at begining
+	STA	ENEMY_COUNT+EN_START+1
+	STA	ENEMY_COUNT+EN_START+2
+	STA	ENEMY_COUNT+EN_START+3
+	STA	ENEMY_COUNT+EN_START+4
+	STA	ENEMY_COUNT+EN_START+5
+	LDA	MAXAX+1
+	EOR	#46~48
+	STA	MAXAX+1
+OTHERWAY	LDA	#2	; direction to go
+	EOR	#RESTRICT ~ -RESTRICT
+	STA	OTHERWAY+1	; when swap again
+	STA	ENEMY_XDIR+EN_START+0
+	STA	ENEMY_XDIR+EN_START+1
+	STA	ENEMY_XDIR+EN_START+2
+	STA	ENEMY_XDIR+EN_START+3
+	STA	ENEMY_XDIR+EN_START+4
+	STA	ENEMY_XDIR+EN_START+5
+	RTS
+
+do_m3leg	; Exact codeing
+do_arm	; Check for segments hiting robo and kill him ok.
+	JSR	ENEMY_HIT_ROBO
+	BCC	!MISSED
+	LDA	CHEATMODE		; kill robo
+	STA	HIT
+!MISSED	DEC	ENEMY_SPEED,X
+	BNE	SCOOBY_DOO
+	LDA	#4
+	STA	ENEMY_SPEED,X
+
+	CPX	#EN_START	; first section
+	BNE	OTHER_SEG	; As base position
+	LDY	ENEMY_PRESET,X	; index to preset place
+	LDA	TMAP_XL,Y	; preset start place
+	STA	ENEMY_XL,X
+	LDA	TMAP_XH,Y
+	STA	ENEMY_XH,X
+	LDA	TMAP_YL,Y
+	STA	ENEMY_YL,X
+	LDA	TMAP_YH,Y
+	STA	ENEMY_YH,X
+
+	LDY	ENEMY_COUNT,X	; table index
+	LDA	ARM_X,Y
+	JSR	MULTIPLY
+	JSR	MOVE_SPRITEX
+	LDA	ARM_Y,Y
+	JSR	MULTIPLY
+	JSR	MOVE_SPRITEY
+	TYA
+	CLC
+	ADC	ENEMY_XDIR,X	; move for count
+MINAX	CMP	#14	; min offset
+	BEQ	REVW
+MAXAX	CMP	#44	; max offset
+	BNE	INR
+REVW	LDA	ENEMY_XDIR,X	; swap direction moveing
+	EOR	#RESTRICT ~ -RESTRICT
+	STA	ENEMY_XDIR,X	; move other way
+	RTS
+
+INR	STA	ENEMY_COUNT,X
+SCOOBY_DOO	RTS
+
+	; other segaments
+OTHER_SEG	LDA	ENEMY_XL-1,X	; next is relitive to previous
+	STA	ENEMY_XL,X	; -1 as enemy update is INX
+	LDA	ENEMY_XH-1,X
+	STA	ENEMY_XH,X
+	LDA	ENEMY_YL-1,X
+	STA	ENEMY_YL,X
+	LDA	ENEMY_YH-1,X
+	STA	ENEMY_YH,X
+
+	LDY	ENEMY_COUNT,X	; curret table pointer
+	LDA	ARM_X,Y
+	JSR	MULTIPLY
+	JSR	MOVE_SPRITEX
+	LDA	ARM_Y,Y
+	JSR	MULTIPLY
+	JSR	MOVE_SPRITEY
+
+	LDA	ENEMY_COUNT-1,X	; last offset
+	SEC
+	SBC	ENEMY_COUNT,X	; from current offset
+	BCS	POSIT	; positive number
+	EOR	#255
+	ADC	#1
+	LSR	A
+	EOR	#255
+	CLC
+	ADC	#1
+	NOB
+POSIT	LSR	A	; half diff of previous
+	CLC		; and current moment
+	ADC	ENEMY_XDIR,X	; add to add amout	
+	BMI	NEG
+	CMP	#RESTRICT
+	BCC	POS
+	LDA	#RESTRICT
+	JMP	POS
+NEG	CMP	#-RESTRICT
+	BCS	POS	
+	LDA	#-RESTRICT
+POS	STA	ENEMY_XDIR,X
+	TYA
+	CLC
+	ADC	ENEMY_XDIR,X
+	STA	ENEMY_COUNT,X
+	RTS
+
+
+	; Scale = byte*(expansion/8) / 32
+	; ie = byte*(expansion) / 256
+	; byte= FROM ARM_X / ARM_Y
+	; expansion = 0 to 255
+	; control arms
+	; 64 points in table x & y
+
+NUMBER1	EQU	MIKE1
+NUMBER2	EQU	MIKE1+1
+SIGN	EQU	MIKE2
+
+ERROR_CITY	LDA	#0
+	RTS
+
+	;NUMBER1 x NUMBER2 ans in ANSWER
+MULTIPLY	STA	NUMBER1
+	LDA	EXPANSION
+	BEQ	ERROR_CITY	; at 0 set to same
+	SEC
+	SBC	#1	; -1 as C=1 on ADC
+	STA	NUMBER2
+
+	LDA	NUMBER1
+	STA	SIGN
+	BPL	POSITIVE
+	EOR	#255
+	CLC
+	ADC	#1
+	STA	NUMBER1
+POSITIVE
+	; 8 Bit * 8 bit unsigned multiply
+	; NUMBER1(Low),ANS(High) = NUMBER1 * NUMBER2
+	LDA	#0	; high byte zero
+	LSR	NUMBER1
+	BCC	!1
+	ADC	NUMBER2
+!1	ROR	A
+	ROR	NUMBER1
+	BCC	!2
+	ADC	NUMBER2
+!2	ROR	A
+	ROR	NUMBER1
+	BCC	!3
+	ADC	NUMBER2
+!3	ROR	A
+	ROR	NUMBER1
+	BCC	!4
+	ADC	NUMBER2
+!4	ROR	A
+	ROR	NUMBER1
+	BCC	!5
+	ADC	NUMBER2
+!5	ROR	A
+	ROR	NUMBER1
+	BCC	!6
+	ADC	NUMBER2
+!6	ROR	A
+	ROR	NUMBER1
+	BCC	!7
+	ADC	NUMBER2
+!7	ROR	A
+	ROR	NUMBER1
+	BCC	!8
+	ADC	NUMBER2
+!8	ROR	A
+	ROR	NUMBER1
+	BIT	SIGN
+	BPL	!POSITIVE
+	EOR	#255	; take only high byte
+	CLC
+	ADC	#1
+!POSITIVE	RTS
+
+****************************************
+*	MIKES CIRCLE TABLE	*
+****************************************
+ARM_X	DB	0,2,4,7,9,11,13,15,17,19,20,22,23,23,24,24
+	DB	25,24,24,23,23,22,20,19,17,15,13,11,9,7,4,2
+	DB	0,-3,-5,-8,-10,-12,-14,-16,-18,-20,-21,-23,-24,-24,-25,-25
+	DB	-25,-25,-25,-24,-24,-23,-21,-20,-18,-16,-14,-12,-10,-8,-5,-3
+	DB	0,2,4,7,9,11,13,15,17,19,20,22,23,23,24,24
+	DB	25,24,24,23,23,22,20,19,17,15,13,11,9,7,4,2
+
+ARM_Y	DB	-25,-25,-25,-24,-24,-23,-21,-20,-18,-16,-14,-12,-10,-8,-5,-3
+	DB	-1,2,4,7,9,11,13,15,17,19,20,22,23,23,24,24
+	DB	25,24,24,23,23,22,20,19,17,15,13,11,9,7,4,2
+	DB	0,-3,-5,-8,-10,-12,-14,-16,-18,-20,-21,-23,-24,-24,-25,-25
+	DB	-25,-25,-25,-24,-24,-23,-21,-20,-18,-16,-14,-12,-10,-8,-5,-3
+	DB	-1,2,4,7,9,11,13,15,17,19,20,22,23,23,24,24
+
+****************************************
+*	MONSTER 2		*
+****************************************
+set_m2nose	LDA	#MON2_SPR+8
+	STA	ENEMY_SPR,Y
+	LDA	#BLUE
+	STA	ENEMY_COL,Y
+	LDA	#0	; frame animate count
+	STA	ENEMY_COUNT,Y
+	LDA	#1	; no can hit until
+	STA	ENEMY_NOHIT,Y	; other three bits shoot off
+	LDA	#30
+	STA	ENEMY_SPEED,Y	; frame move speed
+	LDA	#60	; lots to kill
+	STA	ENEMY_DAMAGE,Y
+	RTS
+
+do_m2nose	LDA	ENEMY_TYPE+EN_START+4 ; 3 turrets
+	ORA	ENEMY_TYPE+EN_START+5
+	ORA	ENEMY_TYPE+EN_START+6
+	BNE	NOCANHIT	; cannot hit enemy
+	LDA	ENEMY_NOHIT,X	; able to kill
+	BEQ	NOCANHIT2	; not hitting but set spr colour
+	DEC	ENEMY_NOHIT,X
+	LDA	ENEMY_COL,X
+	EOR	#BLUE~WHITE	; flash nose part
+	NOW
+NOCANHIT2	LDA	#BLUE
+	STA	ENEMY_COL,X
+NOCANHIT	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	!ALIVE
+	JSR	EXPLODE_ALL	; explode all sprites
+	LDX	#EN_START-1	; when return INX so start again
+	LDA	#0	; that are in use
+	LDY	#&99	; some points
+	JMP	SCOREADD
+
+!ALIVE	DEC	ENEMY_SPEED,X	; delay for new frame
+	BNE	NOACT
+	LDY	ENEMY_COUNT,X	; current index
+	LDA	SPEEDS_DEL,Y	; reset speed
+	STA	ENEMY_SPEED,X
+	LDA	AMNOS,Y	; next amination
+	STA	ENEMY_SPR,X
+	INY
+	TYA
+	AND	#3	; 4 entries in table
+	STA	ENEMY_COUNT,X
+	CMP	#3	; frame full out
+	BNE	NOACT	; no
+	JSR	CHECK_SPRITE	; nose off visible screen
+	BCS	NOACT	; then dont fire
+	JSR	DISTANCEX	; if robo is in font of nose
+	BPL	NOACT	; behind ignore
+	JSR	ALLBUL_FREE	; all bullets not in use
+	BNE	NOACT
+	LDA	#0	; first set of params
+SET_FOUR_GOING	STA	YTEMP
+	JSR	SET_GOING	; cords for bullets
+	STX	XTEMP
+
+	LDX	YTEMP	; first direction
+	LDY	DIREC1,X
+	LDX	#BU_START	; bullet index first one
+	JSR	SET_BUL_PAR
+
+	LDX	YTEMP	; first direction
+	LDY	DIREC2,X
+	LDX	#BU_START+1	; bullet index first one
+	JSR	SET_BUL_PAR
+
+	LDX	YTEMP	; first direction
+	LDY	DIREC3,X
+	LDX	#BU_START+2	; bullet index first one
+	JSR	SET_BUL_PAR
+
+	LDX	XTEMP	; back enemy index
+NOACT	RTS
+
+SPEEDS_DEL	DB	30,30,60,30	; speeds for each frame for below
+AMNOS	DB	MON2_SPR+8,MON2_SPR+9,MON2_SPR+10,MON2_SPR+9
+
+DIREC1	DB	3,7,11,15
+DIREC2	DB	4,8,12,0
+DIREC3	DB	5,9,13,1
+
+SET_GOING	LDA	ENEMY_XL,X
+	STA	BULLET_XL+BU_START
+	STA	BULLET_XL+BU_START+1
+	STA	BULLET_XL+BU_START+2
+	LDA	ENEMY_XH,X
+	STA	BULLET_XH+BU_START
+	STA	BULLET_XH+BU_START+1
+	STA	BULLET_XH+BU_START+2
+	LDA	ENEMY_YL,X
+	STA	BULLET_YL+BU_START
+	STA	BULLET_YL+BU_START+1
+	STA	BULLET_YL+BU_START+2
+	LDA	ENEMY_YH,X
+	STA	BULLET_YH+BU_START
+	STA	BULLET_YH+BU_START+1
+	STA	BULLET_YH+BU_START+2
+	LDA	#PIPE_BUL	; small round blob
+	STA	BULLET_SPR+BU_START
+	STA	BULLET_SPR+BU_START+1
+	STA	BULLET_SPR+BU_START+2
+	LDA	#WHITE	; colour
+	STA	BULLET_COL+BU_START
+	STA	BULLET_COL+BU_START+1
+	STA	BULLET_COL+BU_START+2
+	STA	BULLET_TYPE+BU_START; type is 1 (white=1)
+	STA	BULLET_TYPE+BU_START+1
+	STA	BULLET_TYPE+BU_START+2
+	STA	BULLET_DAMAGE+BU_START
+	STA	BULLET_DAMAGE+BU_START+1
+	STA	BULLET_DAMAGE+BU_START+2
+	RTS
+
+ALLBUL_FREE	LDA	BULLET_TYPE+BU_START
+	ORA	BULLET_TYPE+BU_START+1
+	ORA	BULLET_TYPE+BU_START+2
+	RTS
+
+set_m2funnies	LDA	#MON2_SPR+4
+	STA	ENEMY_SPR,Y
+	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#0	; frame animate count
+	STA	ENEMY_COUNT,Y
+	LDA	#3
+	STA	ENEMY_NOHIT,Y	; can not kill
+	STA	ENEMY_SPEED,Y	; frame move speed
+	RTS
+
+do_m2funnies	DEC	ENEMY_SPEED,X	; delay for new frame
+	BNE	FAST
+	LDA	#3	; reset speed
+	STA	ENEMY_SPEED,X
+	LDY	ENEMY_COUNT,X	; current index
+	LDA	FEE,Y	; next amination
+	STA	ENEMY_SPR,X
+	INY
+	TYA
+	CMP	#6
+	BCC	LV
+	LDA	#0
+LV	STA	ENEMY_COUNT,X
+FAST	RTS
+
+FEE	DB	MON2_SPR+4,MON2_SPR+5,MON2_SPR+6,MON2_SPR+7
+	DB	MON2_SPR+6,MON2_SPR+5
+
+set_m2gunt	LDA	SPECIAL,X	; special as what type
+	STA	ENEMY_SPECIAL,Y	; save for future use
+	BEQ	BIGTUR	; side turret
+	CMP	#1
+	BEQ	TOPTU	; top blob
+	LDA	#MON2_SPR+12	; else must be bottom bit
+	NOW
+TOPTU	LDA	#MON2_SPR+11
+	NOW
+BIGTUR	LDA	#MON2_SPR+13
+	STA	ENEMY_SPR,Y
+	LDA	#BLUE
+	STA	ENEMY_COL,Y
+	LDA	#25	; lots of hits
+	STA	ENEMY_DAMAGE,Y
+	LDA	#0	; able to kill
+	STA	ENEMY_NOHIT,Y
+ROBIN	RTS
+
+do_m2gunt	LDA	ENEMY_NOHIT,X
+	BEQ	SIMON
+	DEC	ENEMY_NOHIT,X
+SIMON	LDA	ENEMY_DAMAGE,X
+	BNE	!ALIVE
+	JMP	KILL_ENEMY	; explode bit
+!ALIVE	JSR	CHECK_SPRITE	; sprite visible
+	BCS	ROBIN	; no then dont bother
+	JSR	ALLBUL_FREE	; all bullets not in use
+	BNE	ROBIN	; no some left
+	LDA	ENEMY_SPECIAL,X	; what turret is it
+	BEQ	RIGHTSIDE
+	CMP	#1
+	BNE	STEVE	; bottom bit
+	JSR	DISTANCEY
+	BPL	ROBIN	; robo below top turret
+	LDA	#1
+	JMP	SET_FOUR_GOING
+STEVE	JSR	DISTANCEY
+	BMI	ROBIN
+	LDA	#3
+	JMP	SET_FOUR_GOING
+
+RIGHTSIDE	JSR	DISTANCEX	; fire only if robo is
+	BMI	ROBIN	; in front of back turret
+	LDA	#2	; first set of params
+	JMP	SET_FOUR_GOING
+
+****************************************
+*	MONSTER 3		*
+****************************************
+set_m3nose	LDA	#MON3_SPR+6
+	STA	ENEMY_SPR,Y
+	LDA	#RED
+	STA	ENEMY_COL,Y
+	LDA	#1	; no can hit until
+	STA	ENEMY_NOHIT,Y	; other three bits shoot off
+	STA	ENEMY_SPEED,Y	; guided count down
+	LDA	#80	; lots to kill
+	STA	ENEMY_DAMAGE,Y
+	RTS
+
+do_m3nose	LDA	ENEMY_TYPE+EN_START+6 ; 3 bits
+	ORA	ENEMY_TYPE+EN_START+7
+	ORA	ENEMY_TYPE+EN_START+8
+	BEQ	KILLNOSE	; all others killed
+WIL	RTS
+
+KILLNOSE	LDA	ENEMY_NOHIT,X	; able to kill
+	BEQ	NOCANHIT4	; not hitting but set spr colour
+	DEC	ENEMY_NOHIT,X
+	LDA	ENEMY_COL,X
+	EOR	#RED~WHITE	; flash nose part
+	NOW
+NOCANHIT4	LDA	#RED
+	STA	ENEMY_COL,X
+NOCANHIT3	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	!ALIVE
+	JSR	EXPLODE_ALL	; explode all sprites
+	LDX	#EN_START-1	; when return INX so start again
+	LDA	#0	; that are in use
+	LDY	#&99	; some points
+	JMP	SCOREADD
+
+!ALIVE	JSR	DISTANCEX
+	BPL	WIL	; behind nose
+	DEC	ENEMY_SPEED,X
+	BNE	WIL
+	LDA	#25	; frames for next one
+	STA	ENEMY_SPEED,X
+	JMP	SETUP_GUIDED
+
+set_m3leg	LDA	ENSP2-EN_START,Y	; sprite for each one
+	STA	ENEMY_SPR,Y
+	LDA	#12	; minimum table position
+	STA	MINAX+1
+	STA	ENEMY_COUNT,Y	; set all indexes
+	LDA	#50	; max table position
+	STA	MAXAX+1
+	LDA	#LT_RED
+	STA	ENEMY_COL,Y
+	LDA	#RESTRICT
+	STA	ENEMY_XDIR,Y	; way going in table
+	LDA	#1	; next frame
+	STA	ENEMY_SPEED,Y
+	STA	ENEMY_NOHIT,Y	; cannot kill sections (directly)
+	LDA	#180
+	STA	EXPANSION	; far out
+	RTS		; to start with
+
+ENSP2	DB	MON3_SPR
+	DB	MON3_SPR
+	DB	MON3_SPR
+	DB	MON3_SPR
+	DB	MON3_SPR+2	; Foot back bit
+
+set_m3foot	STX	XTEMP
+	TYA
+	TAX
+	LDA	#MON3_SPR+1
+	STA	ENEMY_SPR,X
+	LDA	#LT_RED
+	STA	ENEMY_COL,X
+	JSR	do_m3foot	; set foot position
+	LDX	XTEMP	; next to last enemy
+	RTS
+
+do_m3foot	LDA	ENEMY_XL-1,X	; last one was last segement
+	SEC
+	SBC	#24
+	STA	ENEMY_XL,X
+	LDA	ENEMY_XH-1,X
+	SBC	#0
+	STA	ENEMY_XH,X
+	LDA	ENEMY_YL-1,X
+	STA	ENEMY_YL,X
+	LDA	ENEMY_YH-1,X
+	STA	ENEMY_YH,X
+	RTS
+
+set_m3gunt	LDA	SPECIAL,X	; special as what type
+	STA	ENEMY_SPECIAL,Y	; save for future use
+	BEQ	M3BIGTUR	; side turret
+	CMP	#1
+	BEQ	M3TOPTU	; top blob
+	LDA	#MON3_SPR+5	; else must be bottom bit
+	NOW
+M3TOPTU	LDA	#MON3_SPR+3
+	NOW
+M3BIGTUR	LDA	#MON3_SPR+4
+	STA	ENEMY_SPR,Y
+	LDA	#RED
+	STA	ENEMY_COL,Y
+	LDA	#25	; lots of hits
+	STA	ENEMY_DAMAGE,Y
+	LDA	#0	; able to kill
+	STA	ENEMY_NOHIT,Y
+	LDA	#70	; guided missile fire countdown
+	STA	ENEMY_SPEED,Y
+NICK	RTS
+
+do_m3gunt	LDA	ENEMY_NOHIT,X
+	BEQ	DAVID
+	DEC	ENEMY_NOHIT,X
+DAVID	LDA	ENEMY_DAMAGE,X
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#1
+	JSR	SCOREADD
+	JMP	KILL_ENEMY	; explode bit
+
+!ALIVE	JSR	CHECK_SPRITE	; sprite visible
+	BCS	NICK	; no then dont bother
+	JSR	DISTANCEX	; distance away from
+	JSR	DISTANCEY	; robo in x and y directions
+	LDA	MIKE1+1	; high x
+	BNE	NICK	; above 256 forgetit
+	LDA	MIKE1
+	CMP	#90
+	BCS	NICK
+	LDA	MIKE2
+	CMP	#90
+	BCS	NICK
+	DEC	ENEMY_SPEED,X	; speed for new bullet
+	BNE	NICK
+	LDA	#60
+	STA	ENEMY_SPEED,X	; reset speed
+	JMP	SETUP_GUIDED
+
+****************************************
+*	MONSTER 4		*
+****************************************
+set_m4gunt	LDA	SPECIAL,X	; special as what type
+	STA	ENEMY_SPECIAL,Y	; save for future use
+	CLC
+	TXA		; preset index
+	CLC
+	ADC	#MON4_SPR+3	; start for green blobs
+	STA	ENEMY_SPR,Y
+	LDA	#GREEN
+	STA	ENEMY_COL,Y
+	LDA	#20	; lots of hits
+	STA	ENEMY_DAMAGE,Y
+	LDA	#0	; able to kill
+	STA	ENEMY_NOHIT,Y
+	LDA	#70	; guided missile fire countdown
+	STA	ENEMY_SPEED,Y
+JOE	RTS
+
+do_m4gunt	LDA	ENEMY_NOHIT,X
+	BEQ	COLIN
+	DEC	ENEMY_NOHIT,X
+COLIN	LDA	ENEMY_DAMAGE,X
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#1
+	JSR	SCOREADD
+	JMP	KILL_ENEMY	; explode bit
+
+!ALIVE	JSR	CHECK_SPRITE	; sprite visible
+	BCS	JOE	; no then dont bother
+	JSR	DISTANCEX	; distance away from
+	JSR	DISTANCEY	; robo in x and y directions
+	LDA	MIKE1+1	; high x
+	BNE	JOE	; above 256 forgetit
+	LDA	MIKE1
+	CMP	#100
+	BCS	JOE
+	LDA	MIKE2
+	CMP	#100
+	BCS	JOE
+	DEC	ENEMY_SPEED,X	; speed for new bullet
+	BNE	JOE
+	LDA	#70
+	STA	ENEMY_SPEED,X	; reset speed
+	JMP	SETUP_GUIDED	; firet what ever
+
+set_m4nose	LDA	#MON4_SPR+0
+	STA	ENEMY_SPR,Y
+	LDA	#GREEN
+	STA	ENEMY_COL,Y
+	LDA	#0	; frame animate count
+	STA	ENEMY_COUNT,Y
+	LDA	#1	; no can hit until
+	STA	ENEMY_NOHIT,Y	; other three bits shoot off
+	LDA	#30
+	STA	ENEMY_SPEED,Y	; frame move speed
+	LDA	#80	; lots to kill
+	STA	ENEMY_DAMAGE,Y
+	RTS
+
+do_m4nose	LDA	ENEMY_TYPE+EN_START+0 ; 7 turrets
+	ORA	ENEMY_TYPE+EN_START+1
+	ORA	ENEMY_TYPE+EN_START+2
+	ORA	ENEMY_TYPE+EN_START+3
+	ORA	ENEMY_TYPE+EN_START+4
+	ORA	ENEMY_TYPE+EN_START+5
+	STA	ENEMY_SPECIAL,X	; what state of other bits are at
+	BNE	STILTHERE	; cannot hit enemy
+	LDA	ENEMY_NOHIT,X	; able to kill
+	BEQ	KILLABLE	; not hitting but set spr colour
+	DEC	ENEMY_NOHIT,X
+	LDA	ENEMY_COL,X
+	EOR	#GREEN~WHITE	; flash nose part
+	NOW
+KILLABLE	LDA	#GREEN
+	STA	ENEMY_COL,X
+STILTHERE	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	!ALIVE
+	JSR	EXPLODE_ALL	; explode all sprites
+	LDX	#EN_START-1	; when return INX so start again
+	LDA	#0	; that are in use
+	LDY	#&99	; some points
+	JMP	SCOREADD
+
+!ALIVE	DEC	ENEMY_SPEED,X	; delay for new frame
+	BNE	NFIREBUL
+	LDY	ENEMY_COUNT,X	; current index
+	LDA	SPEEDS_DEL,Y	; reset speed
+	STA	ENEMY_SPEED,X
+	LDA	HARDY,Y	; next amination
+	STA	ENEMY_SPR,X
+	INY
+	TYA
+	AND	#3	; 4 entries in table
+	STA	ENEMY_COUNT,X
+	CMP	#3	; frame full out
+	BNE	NFIREBUL	; no
+	LDA	ENEMY_SPECIAL,X	; other bits in use still
+	BNE	NFIREBUL
+	JSR	CHECK_SPRITE	; nose off visible screen
+	BCS	NFIREBUL	; then dont fire
+	JMP	SETUP_GUIDED
+NFIREBUL	RTS
+
+HARDY	DB	MON4_SPR+0,MON4_SPR+1,MON4_SPR+2,MON4_SPR+1
+
+****************************************
+*	MONSTER 5		*
+****************************************
+set_m5gunt	TXA		; preset index
+	CLC
+	ADC	#MON5_SPR
+	STA	ENEMY_SPR,Y
+	LDA	#GREEN
+	STA	ENEMY_COL,Y
+	LDA	#20	; lots of hits
+	STA	ENEMY_DAMAGE,Y
+	LDA	#0	; able to kill
+	STA	ENEMY_NOHIT,Y
+	LDA	#80	; guided missile fire countdown
+	STA	ENEMY_SPEED,Y
+ROD	RTS
+
+do_m5gunt	LDA	ENEMY_NOHIT,X
+	BEQ	CHARLES
+	DEC	ENEMY_NOHIT,X
+CHARLES	LDA	ENEMY_DAMAGE,X
+	BNE	!ALIVE
+	LDA	#0
+	LDY	#1
+	JSR	SCOREADD
+	JMP	KILL_ENEMY	; explode bit
+
+!ALIVE	JSR	CHECK_SPRITE	; sprite visible
+	BCS	ROD	; no then dont bother
+	JSR	DISTANCEX	; distance away from
+	JSR	DISTANCEY	; robo in x and y directions
+	LDA	MIKE1+1	; high x
+	BNE	ROD	; above 256 forgetit
+	LDA	MIKE1
+	CMP	#200
+	BCS	ROD
+	LDA	MIKE2
+	CMP	#200
+	BCS	ROD
+	DEC	ENEMY_SPEED,X	; speed for new bullet
+	BNE	ROD
+	LDA	#80
+	STA	ENEMY_SPEED,X	; reset speed
+	JMP	SETUP_GUIDED	; firet what ever
+
+set_m5front	TXA
+	CLC
+	ADC	#MON5_SPR+6-6	; star of front part -6 index start at 6
+	STA	ENEMY_SPR,Y
+	LDA	SPECIAL,X
+	STA	ENEMY_SPECIAL,Y	; what is in control
+	LDA	#MED_GREY
+	STA	ENEMY_COL,Y
+	LDA	#1
+	STA	ENEMY_NOHIT,Y
+	LDA	#80
+	STA	ENEMY_DAMAGE,Y
+	STA	ENEMY_COUNT,Y	; speed for quiged when kill all bits
+	LDA	#0	; waiting to be hit
+	STA	ENEMY_ACT,Y
+SWEETFA	RTS
+
+FRONY	JSR	CHECK_SPRITE
+	BCS	SWEETFA
+	DEC	ENEMY_COUNT,X
+	BNE	SWEETFA
+	LDA	#100
+	STA	ENEMY_COUNT,X
+	JMP	SETUP_GUIDED
+
+do_m5front	LDA	ENEMY_TYPE+EN_START+0 ; 6 turrets
+	ORA	ENEMY_TYPE+EN_START+1
+	ORA	ENEMY_TYPE+EN_START+2
+	ORA	ENEMY_TYPE+EN_START+3
+	ORA	ENEMY_TYPE+EN_START+4
+	ORA	ENEMY_TYPE+EN_START+5
+	BNE	SWEETFA	; blobs still there
+	LDA	ENEMY_SPECIAL,X	; what to do with this one
+	BEQ	SWEETFA	; dont do anything
+	BPL	FRONY	; fire only first one checks
+	LDA	ENEMY_NOHIT,X	; able to kill
+	BEQ	BIL	; not hitting but set spr colour
+	DEC	ENEMY_NOHIT,X
+	LDA	ENEMY_COL,X
+	EOR	#MED_GREY~WHITE	; flash graphic part
+	NOW
+BIL	LDA	#MED_GREY
+	STA	ENEMY_COL+0,X
+	STA	ENEMY_COL+1,X
+	STA	ENEMY_COL+2,X
+	STA	ENEMY_COL+3,X
+	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	FRONY	; fire at player
+	LDA	#0
+	STA	ENEMY_ACT,X	; else explode bits
+	STA	ENEMY_ACT+1,X
+	STA	ENEMY_ACT+2,X
+	STA	ENEMY_ACT+3,X
+	LDA	#28
+	JSR	EXPLODE_ENEMY	; set first
+	INX
+	LDA	#28	; next one aswell
+	JSR	EXPLODE_ENEMY
+	INX
+	LDA	#28
+	JSR	EXPLODE_ENEMY	; and next
+	INX
+	LDA	#28
+	JMP	EXPLODE_ENEMY	; now last
+
+do_m5middle	LDA	ENEMY_ACT,X
+	BNE	ASET_CORDS	; already set cords
+	LDA	#1
+	STA	ENEMY_ACT,X
+	STA	ENEMY_ACT+1,X
+	STA	ENEMY_ACT+2,X
+	STA	ENEMY_ACT+3,X
+	STA	ENEMY_XH,X
+	STA	ENEMY_XH+1,X
+	STA	ENEMY_XH+2,X
+	STA	ENEMY_XH+3,X
+	LDA	#&95
+	STA	ENEMY_YL,X
+	LDA	#&AA
+	STA	ENEMY_YL+1,X
+	LDA	#&BF
+	STA	ENEMY_YL+2,X
+	LDA	#&D4
+	STA	ENEMY_YL+3,X
+	LDA	#MON5_SPR+10
+	STA	ENEMY_SPR,X
+	LDA	#MON5_SPR+11
+	STA	ENEMY_SPR+1,X
+	LDA	#MON5_SPR+12
+	STA	ENEMY_SPR+2,X
+	LDA	#MON5_SPR+13
+	STA	ENEMY_SPR+3,X
+	LDA	#&10
+	STA	ENEMY_XL,X
+	STA	ENEMY_XL+1,X
+	STA	ENEMY_XL+2,X
+	STA	ENEMY_XL+3,X
+	LDA	#100	; hard to kill
+	STA	ENEMY_DAMAGE,X
+	RTS
+
+ASET_CORDS	LDA	ENEMY_SPECIAL,X	; is what
+	BMI	FIRSO	; only first has control
+GOTOFR	JMP	FRONY
+FIRSO	LDA	ENEMY_NOHIT,X	; able to kill
+	BEQ	RABLE	; not hitting but set spr colour
+	DEC	ENEMY_NOHIT,X
+	LDA	ENEMY_COL,X
+	EOR	#MED_GREY~WHITE	; flash nose part
+	NOW
+RABLE	LDA	#MED_GREY
+	STA	ENEMY_COL,X
+	STA	ENEMY_COL+1,X
+	STA	ENEMY_COL+2,X
+	STA	ENEMY_COL+3,X
+	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	GOTOFR
+	LDA	#0
+	STA	ENEMY_ACT,X
+	STA	ENEMY_ACT+1,X
+	STA	ENEMY_ACT+2,X
+	STA	ENEMY_ACT+3,X
+	LDA	#29
+	JSR	EXPLODE_ENEMY	; set first
+	INX
+	LDA	#29	; next one aswell
+	JSR	EXPLODE_ENEMY
+	INX
+	LDA	#29
+	JSR	EXPLODE_ENEMY	; and next
+	INX
+	LDA	#29
+	JMP	EXPLODE_ENEMY	; now last
+
+do_m5last	LDA	ENEMY_ACT,X
+	BNE	ATOGO
+	LDA	#&3F
+	STA	ENEMY_XL,X
+	STA	ENEMY_XL+2,X
+	LDA	#&3F+24
+	STA	ENEMY_XL+1,X
+	STA	ENEMY_XL+3,X
+	LDA	#&B0
+	STA	ENEMY_YL,X
+	STA	ENEMY_YL+1,X
+	LDA	#&B0+21
+	STA	ENEMY_YL+2,X
+	STA	ENEMY_YL+3,X
+	LDA	#MON5_SPR+14
+	STA	ENEMY_SPR,X
+	LDA	#MON5_SPR+15
+	STA	ENEMY_SPR+1,X
+	LDA	#MON5_SPR+16
+	STA	ENEMY_SPR+2,X
+	LDA	#MON5_SPR+17
+	STA	ENEMY_SPR+3,X
+	LDA	#1
+	STA	ENEMY_ACT,X
+	STA	ENEMY_ACT+1,X
+	STA	ENEMY_ACT+2,X
+	STA	ENEMY_ACT+3,X
+	LDA	#150	; hard to kill
+	STA	ENEMY_DAMAGE,X
+	RTS
+
+ATOGO	LDA	ENEMY_SPECIAL,X	; is what
+	BMI	ANDAG	; only first has control
+GOFR	JMP	FRONY
+ANDAG	LDA	ENEMY_NOHIT,X	; able to kill
+	BEQ	RABLER	; not hitting but set spr colour
+	DEC	ENEMY_NOHIT,X
+	LDA	ENEMY_COL,X
+	EOR	#RED~WHITE	; flash nose part
+	NOW
+RABLER	LDA	#RED
+	STA	ENEMY_COL,X
+	STA	ENEMY_COL+1,X
+	STA	ENEMY_COL+2,X
+	STA	ENEMY_COL+3,X
+	LDA	ENEMY_DAMAGE,X	; killed nose bit
+	BNE	GOFR
+	JSR	EXPLODE_ALL	; explode all sprites
+	LDX	#EN_START-1	; when return INX so start again
+	LDA	#0	; that are in use
+	LDY	#&99	; some points
+	JMP	SCOREADD
+
+
+	IF	TAPE_LOAD=0 & DISK_LOAD=0
+
+	ORG	TILEMAP
+
+	IF	LEV=0
+	INCBIN	..\LEVEL\LEVEL1.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL1.CHR
+	ENDIF
+
+	IF	LEV=1
+	INCBIN	..\LEVEL\LEVEL2.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL2.CHR
+	ENDIF
+
+	IF	LEV=2
+	INCBIN	..\LEVEL\LEVEL3A.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL3A.CHR
+	ENDIF
+
+	IF	LEV=3
+	INCBIN	..\LEVEL\LEVEL3B.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL3B.CHR
+	ENDIF
+
+	IF	LEV=4
+	INCBIN	..\LEVEL\MONSTER1.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\MONSTER1.CHR
+	ENDIF
+
+	IF	LEV=5
+	INCBIN	..\LEVEL\BATTLE.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\BATTLE1.CHR
+	ENDIF
+
+	IF	LEV=6
+	INCBIN	..\LEVEL\LEVEL5.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL5.CHR
+	ENDIF
+
+	IF	LEV=7
+	INCBIN	..\LEVEL\LEVEL6A.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL6A.CHR
+	ENDIF
+
+	IF	LEV=8
+	INCBIN	..\LEVEL\LEVEL6B.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL6B.CHR
+	ENDIF
+
+	IF	LEV=9
+	INCBIN	..\LEVEL\LEVEL8.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL8.CHR
+	ENDIF
+
+	IF	LEV=10
+	INCBIN	..\LEVEL\MONSTER2.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\MONSTER2.CHR
+	ENDIF
+
+	IF	LEV=11
+	INCBIN	..\LEVEL\BATTLE.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\BATTLE2.CHR
+	ENDIF
+
+	IF	LEV=12
+	INCBIN	..\LEVEL\LEVEL10.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL10.CHR
+	ENDIF
+
+	IF	LEV=13
+	INCBIN	..\LEVEL\LEVEL11A.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL11A.CHR
+	ENDIF
+
+	IF	LEV=14
+	INCBIN	..\LEVEL\LEVEL11B.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL11B.CHR
+	ENDIF
+
+	IF	LEV=15
+	INCBIN	..\LEVEL\MONSTER3.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\MONSTER3.CHR
+	ENDIF
+
+	IF	LEV=16
+	INCBIN	..\LEVEL\BATTLE.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\BATTLE3.CHR
+	ENDIF
+
+	IF	LEV=17
+	INCBIN	..\LEVEL\LEVEL14.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL14.CHR
+	ENDIF
+
+	IF	LEV=18
+	INCBIN	..\LEVEL\LEVEL15A.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL15A.CHR
+	ENDIF
+
+	IF	LEV=19
+	INCBIN	..\LEVEL\LEVEL15B.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL15B.CHR
+	ENDIF
+
+	IF	LEV=20
+	INCBIN	..\LEVEL\LEVEL16.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL16.CHR
+	ENDIF
+
+	IF	LEV=21
+	INCBIN	..\LEVEL\MONSTER4.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\MONSTER4.CHR
+	ENDIF
+
+	IF	LEV=22
+	INCBIN	..\LEVEL\BATTLE.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\BATTLE4.CHR
+	ENDIF
+
+	IF	LEV=23
+	INCBIN	..\LEVEL\LEVEL18.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL18.CHR
+	ENDIF
+
+	IF	LEV=24
+	INCBIN	..\LEVEL\LEVEL19.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL19.CHR
+	ENDIF
+
+	IF	LEV=25
+	INCBIN	..\LEVEL\LEVEL20.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\LEVEL20.CHR
+	ENDIF
+
+	IF	LEV=26
+	INCBIN	..\LEVEL\MONSTER5.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\MONSTER5.CHR
+	ENDIF
+
+	IF	LEV=27
+	INCBIN	..\LEVEL\ENDSEQ.ALL
+	ORG	CHARSET
+	INCBIN	..\CHARS\ENDSEQ.CHR
+	ENDIF
+
+	ENDIF
+
+	SEND	COMPUTER1
+	END	;&178A	;START_CODE
+

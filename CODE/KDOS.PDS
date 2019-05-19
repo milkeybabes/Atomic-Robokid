@@ -1,0 +1,450 @@
+
+ChrDirFlag	equ	$69
+MapDirFlag	equ	$6a
+MusicDirFlag	equ	$6b
+
+LoadLevel	ldy	#ChrDirFlag
+	jsr	ReadCode
+	ldy	#MusicDirFlag
+	jsr	ReadCode
+	ldy	#MapDirFlag
+	jsr	ReadCode
+
+MEMORY	EQU	&FC
+STORE	EQU	&FE
+
+	; Unpack Compressed Data
+	LDA	#<TILEMAP
+	STA	MEMORY+1	; high
+	LDA	#>TILEMAP
+	STA	MEMORY+0	; low
+	LDA	Start+1
+	STA	STORE+1	; high
+	LDA	Start
+	STA	STORE+0	; low
+	LDY	#0
+UN_CRUNCH	LDA	(STORE),Y	; first byte
+	BNE	ALL_GO	; 0 end of data
+	LDA	LEVEL_DATA	; Put back for tape version
+	STA	LEVEL_BYTE	; As disk loader need to know if monster level
+	AND	#%00000010	; Is this a monster level
+	BNE	SCT	; nope a scroller / or battle
+	RTS		; Exit no monster level
+SCT	LDA	#0	;Load(&8100) code(&F00) from disk(&25900)
+	STA	Start
+	STA	Len
+	STA	Disk
+	LDA	#&81	; load memory to load at
+	STA	Start+1
+	LDA	#&0F	; size of code is
+	STA	Len+1
+	LDA	#&59
+	STA	Disk+1
+	LDA	#2
+	STA	Disk+2
+	JMP	KDload
+
+ALL_GO	BMI	SPECIAL_BYTE
+	TAX		; amount of none repeat bytes
+	JSR	BUMP_STORE	; advance on store
+UN_LOOP	LDA	(STORE),Y
+	STA	(MEMORY),Y
+	JSR	BUMP_STORE	; advance pack memory
+	JSR	BUMP_MEMORY	; advance store
+	DEX
+	BPL	UN_LOOP	; all of it
+	JMP	UN_CRUNCH	; all data	
+
+SPECIAL_BYTE
+	AND	#%01111111	; get amount of duplicates
+	TAX		; amount
+	JSR	BUMP_STORE	; advance on store
+	LDA	(STORE),Y	; get byte that is repeated
+	STA	STORES+1	; live!
+	JSR	BUMP_STORE	; past last byte
+STORES	LDA	#255	; this byte
+	STA	(MEMORY),Y	; save out
+	JSR	BUMP_MEMORY	; advance
+	DEX
+	BNE	STORES	; all repeats
+	JMP	UN_CRUNCH	; all data
+
+	; Advance one on Pack store
+BUMP_STORE	INC	STORE	; low + 1
+	BNE	!NO_CARRY	; overflow 
+	INC	STORE+1	; high + 1
+!NO_CARRY	RTS
+
+	; Advance one on Memory store
+BUMP_MEMORY
+	INC	MEMORY	; low + 1
+	BNE	!NO_CARRY	; overflow 
+	INC	MEMORY+1	; high + 1
+!NO_CARRY	RTS
+
+ReadCode
+	jsr	ReadDir
+	jmp	KDload
+ReadDir
+; Y = Dir No
+; X = Level
+	lda	Level
+	asl	a
+	asl	a
+	asl	a
+	tax
+	lda	#>Start 
+	sta	Start
+	lda	#<Start
+	sta	Start+1
+	lda	#>7
+	sta	Len
+	lda	#<7
+	sta	Len+1
+	stx	Disk	; entry No
+	sty	Disk+1	; dir No
+	lda	#2
+	sta	Disk+2
+	jmp	KDload
+
+
+********************************
+* Kdos
+Kdos
+;Bank	EQu	$DD00
+KdosInit	EQU	0
+KdosSave	EQU	0
+
+	If	KdosSave=1
+	if	kdosInit=0
+	error	You plonker .... Init must be on when using save
+	endif
+	endif
+
+VAL	EQU	*-$5000
+
+
+Start	DS	2,0
+Len	DS	2,0
+Disk	DS	3,0
+
+KDinit	JMP VAL+&51EE
+KDvicBank	JMP VAL+&518E
+KDload	JMP VAL+&514F
+KDsave	JMP VAL+&523D
+KDsetID	JMP VAL+&51B7
+KDgetID	JMP VAL+&51D5
+KDwideLoad	JMP VAL+&514C
+KDreset	JMP VAL+&5031
+	BRK
+	AND &2E,X
+	BMI VAL+&4FAC
+	BNE VAL+&5041
+	LDA #3
+	STA BANK
+	LDA #&FF
+	JSR VAL+&5030
+	RTS
+	LDA #5
+	STA VAL+&50A9
+	LDY #&0A
+	LDA VAL+&5027
+	STA BANK
+	JSR VAL+&5030
+	LDA #&28
+	STA VAL+&501F
+	LDA #&1B
+	STA BANK
+	LDX #&CD
+	DEX
+	BNE VAL+&504D
+	LDA BANK
+	BMI VAL+&5023
+	LDA #&0B
+	STA BANK
+	DEX
+	BEQ VAL+&5023
+	LDA BANK
+	BPL VAL+&505A
+	JSR VAL+&5030
+	LDX #8
+	LDA VAL+&5047
+	STA BANK
+	JSR VAL+&502D
+	NOP
+	NOP
+	LDA VAL+&5056
+	LSR VAL+&501F
+	BCS VAL+&507E
+	ORA #&20
+	BCC VAL+&5081
+	AND #&DF
+	NOP
+	STA BANK
+	JSR VAL+&502D
+	JSR VAL+&5030
+	DEX
+	BNE VAL+&5067
+	LDA VAL+&5047
+	STA BANK
+	LDY #&5E
+	DEY
+	BEQ VAL+&5023
+	LDA BANK
+	BMI VAL+&5095
+	JSR VAL+&502D
+	LDA #&13
+	STA BANK
+	STX VAL+&5179
+	LDA #1
+	JSR VAL+&50D0
+	LDY #4
+	LDA VAL+&5002,Y
+	JSR VAL+&50D0
+	DEY
+	BPL VAL+&50AF
+	JSR VAL+&5178
+	BEQ VAL+&50C0
+	JMP VAL+&5036
+	LDY #4
+	LDA VAL+&4FFF,Y
+	STA &00FB,Y
+	DEY
+	BNE VAL+&50C2
+	TYA
+	STA VAL+&5179
+	RTS
+	TAX
+	SEC
+	ROR A
+	STA VAL+&501F
+	LDA VAL+&5027
+	STA BANK
+	LDA BANK
+	BPL VAL+&50DC
+	EOR #&10
+	BCC VAL+&50E9
+	ORA #&20
+	BCS VAL+&50EC
+	AND #&DF
+	NOP
+	LSR VAL+&501F
+	STA BANK
+	BEQ VAL+&50F9
+	BIT &FF
+	JMP VAL+&50E1
+	TXA
+	CLC
+	ADC VAL+&5179
+	STA VAL+&5179
+	LDA VAL+&50A1
+	STA BANK
+	RTS
+	LDX VAL+&5027
+	STX BANK
+	LDX VAL+&50A1
+	LDA BANK
+	BPL VAL+&5111
+	STY VAL+&5139
+	LDY #4
+	STX BANK
+	LSR A
+	LDX VAL+&5027
+	JSR VAL+&5030
+	EOR BANK
+	STX BANK
+	LSR A
+	LDX VAL+&50A1
+	JSR VAL+&5030
+	EOR BANK
+	DEY
+	BNE VAL+&511B
+	LDY #&FF
+	EOR #&A2
+	STA VAL+&5147
+	CLC
+	ADC VAL+&5179
+	STA VAL+&5179
+	LDA #0
+	STX BANK
+	RTS
+	LDA #4
+	DB	&2C
+	LDA	#0
+	JSR VAL+&5033
+	BNE VAL+&518D
+	LDY #0
+	LDA &FF
+	BEQ VAL+&516A
+	JSR VAL+&5108
+	STA (&FC),Y
+	INY
+	BNE VAL+&515C
+	INC &FD
+	DEC &FF
+	BNE VAL+&515C
+	LDA &FE
+	BEQ VAL+&5178
+	JSR VAL+&5108
+	STA (&FC),Y
+	INY
+	DEC &FE
+	BNE VAL+&516E
+	LDA #&E0
+	JSR VAL+&50D0
+	JSR VAL+&5108
+	STA VAL+&5187
+	JSR VAL+&5108
+	CMP #0
+	BEQ VAL+&518C
+	LDA #&10
+	TAX
+	RTS
+	EOR BANK
+	AND #3
+	EOR BANK
+	STA BANK
+	AND #3
+	STA VAL+&5027
+	ORA #&10
+	STA VAL+&50A1
+	ORA #8
+	STA VAL+&5047
+	EOR #&10
+	STA VAL+&5056
+	LSR A
+	EOR VAL+&5027
+	EOR #&A4
+	STA VAL+&513B
+	RTS
+	LDA VAL+&5002
+	PHA
+	LDA VAL+&5003
+	PHA
+	STX VAL+&5002
+	STY VAL+&5003
+	LDA #2
+	JSR VAL+&5033
+	TAX
+	PLA
+	STA VAL+&5003
+	PLA
+	STA VAL+&5002
+	TXA
+	RTS
+	LDA #3
+	JSR VAL+&5033
+	BNE VAL+&51ED
+	JSR VAL+&5108
+	STA VAL+&51EA
+	JSR VAL+&5108
+	TAY
+	JSR VAL+&5178
+	LDX #&FF
+	CMP #0
+	RTS
+
+	IF	KdosInit
+; Kdos Init
+	JSR &FFE7
+	LDX #&12
+	LDA #8
+	JSR &FFB1
+	LDA VAL+&522A,X
+	JSR &FF93
+	JMP VAL+&5204
+	JSR &FFA8
+	DEX
+	LDA VAL+&522A,X
+	BNE VAL+&5201
+	JSR &FFAE
+	DEX
+	BPL VAL+&51F3
+	LDA #&3F
+	STA &DD02
+	LDA BANK
+	AND #3
+	JSR VAL+&5196
+	LDA #&40
+	BIT BANK
+	BNE VAL+&521F
+	BIT BANK
+	BEQ VAL+&5224
+	RTS
+
+	DB	0,"01,81,0,2,E-B",255
+	
+;	BRK
+;	BMI VAL+&525E
+;	BIT &3138
+;	BIT &2C30
+;	DB &32
+;	BIT &2D45
+;	DB &42
+;	DB &FF
+	BRK
+	BMI VAL+&525F
+	DB &F2
+
+	If KdosSave
+; Kdos Save
+	LDA #1
+	JSR VAL+&5033
+	BNE VAL+&5229
+	LDY #0
+	LDA &FF
+	BEQ VAL+&5258
+	LDA (&FC),Y
+	JSR VAL+&50D0
+	INY
+	BNE VAL+&524A
+	INC &FD
+	DEC &FF
+	BNE VAL+&524A
+	LDA &FE
+	BEQ VAL+&5266
+	LDA (&FC),Y
+	JSR VAL+&50D0
+	INY
+	DEC &FE
+	BNE VAL+&525C
+	JMP VAL+&5178
+
+	EndIf
+	EndIF
+
+!OLDORG	ORG	$7780
+	JSR	CLS	; wipe out screen
+	LDA	#0
+	STA	BORDER
+	STA	COLOUR0
+	LDY	#63
+!CLSPRITES	STA	TEXTSPRS,Y
+	STA	TEXTSPRS+64,Y
+	STA	TEXTSPRS+128,Y
+	STA	TEXTSPRS+192,Y
+	STA	TEXTSPRS+256,Y
+	STA	TEXTSPRS+256+64,Y	; just as well
+	DEY
+	BPL	!CLSPRITES
+	LDA	#%00011000	; MULTICOLOUR 38 COLS 3 IN X SCROLL
+	STA	VICCR2
+	LDA	#%11011110	; CHARACTER AND SCREEN SPRERS
+	STA	VICMCR
+	LDA	#%10010101	; &8000 to &BFFF
+	STA	BANK
+	JSR	KDvicBank	; set kdos as same
+	JSR	PLOTTEXT	; fire print
+	DB	1,12,9
+	DB	"PLEASE TURN DISK OVER"
+	DB	255
+	LDA	#%00011011	; 25 ROWS 3 Y SCROLL
+	STA	VICCR1
+!LOOP	JSR	KDGETID
+	CPY	#"2"
+	BNE	!LOOP
+	JSR	KDSETID
+	JMP	START_CODE
+
+	ORG	!OLDORG
+
